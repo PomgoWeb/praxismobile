@@ -14,7 +14,7 @@ import 'services/app_logger.dart';
 import 'services/push_service.dart';
 import 'services/wp_api.dart';
 
-const Color _kBrandNavy = Color(0xFF0B3F69);
+const Color _kBrandNavy = Color(0xFF06263F);
 const Color _kBrandLight = Color(0xFFE8EEF3);
 
 Future<void> main() async {
