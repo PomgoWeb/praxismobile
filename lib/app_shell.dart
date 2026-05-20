@@ -13,7 +13,7 @@ import 'webview/app_webview.dart';
 
 const Color _kBrandNavy = Color(0xFF06263F);
 const Color _kBrandOrange = Color(0xFFC10F00);
-const Color _kBrandLight = Color(0xFFE8EEF3);
+const Color _kActionBarBg = Color(0xFFFFFFFF);
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -84,7 +84,7 @@ class _AppShellState extends State<AppShell> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: const BoxDecoration(
-            color: _kBrandLight,
+            color: _kActionBarBg,
             border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
           ),
           child: Row(
