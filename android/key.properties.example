@@ -1,0 +1,4 @@
+storeFile=keystore/praxis-upload.jks
+storePassword=TON_MDP_KEYSTORE
+keyPassword=TON_MDP_KEY
+keyAlias=praxis_upload
