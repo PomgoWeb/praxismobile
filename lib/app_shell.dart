@@ -58,11 +58,16 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(kAppName),
+        toolbarHeight: 34,
+        titleSpacing: 8,
+        title: const Text(kAppName, style: TextStyle(fontSize: 14, height: 1)),
         actions: <Widget>[
           IconButton(
             onPressed: _openSettings,
-            icon: const Icon(Icons.settings_rounded),
+            icon: const Icon(Icons.settings_rounded, size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            visualDensity: VisualDensity.compact,
             tooltip: 'Paramètres',
           ),
         ],
@@ -82,7 +87,7 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: const BoxDecoration(
             color: _kActionBarBg,
             border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
@@ -163,18 +168,19 @@ class _ActionItem extends StatelessWidget {
         splashColor: _kBrandNavy.withValues(alpha: 0.08),
         highlightColor: Colors.transparent,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(destination.icon, color: color),
-              const SizedBox(height: 4),
+              Icon(destination.icon, color: color, size: 17),
+              const SizedBox(height: 1),
               Text(
                 destination.label,
                 style: TextStyle(
                   color: color,
                   fontWeight: weight,
-                  fontSize: 12,
+                  fontSize: 10,
+                  height: 1,
                 ),
               ),
             ],
