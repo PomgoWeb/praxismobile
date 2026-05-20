@@ -11,6 +11,10 @@ import 'services/push_service.dart';
 import 'ui/settings_page.dart';
 import 'webview/app_webview.dart';
 
+const Color _kBrandNavy = Color(0xFF0B3F69);
+const Color _kBrandOrange = Color(0xFFFF4A00);
+const Color _kBrandLight = Color(0xFFE8EEF3);
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -79,18 +83,40 @@ class _AppShellState extends State<AppShell> {
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (int index) {
-          final MenuDestination destination = kMenuDestinations[index];
-          context.read<AppState>().navigateToPath(destination.path);
-        },
-        destinations: kMenuDestinations
-            .map(
-              (MenuDestination d) =>
-                  NavigationDestination(icon: Icon(d.icon), label: d.label),
-            )
-            .toList(),
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          backgroundColor: _kBrandNavy,
+          indicatorColor: _kBrandLight,
+          labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((
+            Set<WidgetState> states,
+          ) {
+            final Color color = states.contains(WidgetState.selected)
+                ? _kBrandOrange
+                : _kBrandLight;
+            return TextStyle(color: color, fontWeight: FontWeight.w600);
+          }),
+          iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>((
+            Set<WidgetState> states,
+          ) {
+            final Color color = states.contains(WidgetState.selected)
+                ? _kBrandOrange
+                : _kBrandLight;
+            return IconThemeData(color: color);
+          }),
+        ),
+        child: NavigationBar(
+          selectedIndex: currentIndex,
+          onDestinationSelected: (int index) {
+            final MenuDestination destination = kMenuDestinations[index];
+            context.read<AppState>().navigateToPath(destination.path);
+          },
+          destinations: kMenuDestinations
+              .map(
+                (MenuDestination d) =>
+                    NavigationDestination(icon: Icon(d.icon), label: d.label),
+              )
+              .toList(),
+        ),
       ),
     );
   }

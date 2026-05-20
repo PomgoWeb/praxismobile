@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-const String kAppName = 'PraxisMedia';
+const String kAppName = 'Praxis';
 const String kBaseUrl = 'https://praxismedia.fr/';
 const String kRegisterEndpoint = '/wp-json/rsapp/v1/register-token';
 const String kRegisterTokenKey = 'RSAPP_2026_05_20_9z3c4x2a7t4e8c4d1e0f';
@@ -20,7 +20,7 @@ class MenuDestination {
 }
 
 const List<MenuDestination> kMenuDestinations = <MenuDestination>[
-  MenuDestination(label: 'Home', path: '/', icon: Icons.home_rounded),
+  MenuDestination(label: 'Accueil', path: '/', icon: Icons.home_rounded),
   MenuDestination(
     label: 'Votes',
     path: '/liste-referendums/',

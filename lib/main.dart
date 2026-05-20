@@ -14,6 +14,9 @@ import 'services/app_logger.dart';
 import 'services/push_service.dart';
 import 'services/wp_api.dart';
 
+const Color _kBrandNavy = Color(0xFF0B3F69);
+const Color _kBrandLight = Color(0xFFE8EEF3);
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -83,7 +86,12 @@ class PraxisMediaApp extends StatelessWidget {
       title: kAppName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0A4DA2)),
+        colorScheme: ColorScheme.fromSeed(seedColor: _kBrandNavy),
+        scaffoldBackgroundColor: _kBrandLight,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _kBrandNavy,
+          foregroundColor: _kBrandLight,
+        ),
         useMaterial3: true,
       ),
       home: const AppShell(),

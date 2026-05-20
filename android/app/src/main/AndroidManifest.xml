@@ -4,7 +4,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
 
     <application
-        android:label="PraxisMedia"
+        android:label="Praxis"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
