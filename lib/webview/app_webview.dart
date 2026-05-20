@@ -155,7 +155,7 @@ class _AppWebViewState extends State<AppWebView>
             var body = document.body;
             if (!html && !body) return;
 
-            var classes = ['rsapp', 'rsapp-webview'];
+            var classes = ['rsapp', 'rsapp-hide', 'rsapp-webview'];
             var ua = (navigator.userAgent || '').toLowerCase();
             if (ua.indexOf('android') >= 0) {
               classes.push('rsapp-android');
