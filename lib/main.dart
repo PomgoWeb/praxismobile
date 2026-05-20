@@ -89,8 +89,8 @@ class PraxisMediaApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: _kBrandNavy),
         scaffoldBackgroundColor: _kBrandLight,
         appBarTheme: const AppBarTheme(
-          backgroundColor: _kBrandNavy,
-          foregroundColor: _kBrandLight,
+          backgroundColor: _kBrandLight,
+          foregroundColor: _kBrandNavy,
         ),
         useMaterial3: true,
       ),

@@ -14,6 +14,7 @@ import 'webview/app_webview.dart';
 const Color _kBrandNavy = Color(0xFF06263F);
 const Color _kBrandOrange = Color(0xFFFF4A00);
 const Color _kBrandLight = Color(0xFFE8EEF3);
+const Color _kBrandWhite = Color(0xFFFFFFFF);
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -55,10 +56,6 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    final int matchedIndex = kMenuDestinations.indexWhere(
-      (MenuDestination e) => e.path == appState.currentPath,
-    );
-    final int currentIndex = matchedIndex < 0 ? 0 : matchedIndex;
 
     return Scaffold(
       appBar: AppBar(
@@ -83,39 +80,27 @@ class _AppShellState extends State<AppShell> {
             ),
         ],
       ),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          backgroundColor: _kBrandNavy,
-          indicatorColor: _kBrandLight,
-          labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((
-            Set<WidgetState> states,
-          ) {
-            final Color color = states.contains(WidgetState.selected)
-                ? _kBrandOrange
-                : _kBrandLight;
-            return TextStyle(color: color, fontWeight: FontWeight.w600);
-          }),
-          iconTheme: WidgetStateProperty.resolveWith<IconThemeData?>((
-            Set<WidgetState> states,
-          ) {
-            final Color color = states.contains(WidgetState.selected)
-                ? _kBrandOrange
-                : _kBrandLight;
-            return IconThemeData(color: color);
-          }),
-        ),
-        child: NavigationBar(
-          selectedIndex: currentIndex,
-          onDestinationSelected: (int index) {
-            final MenuDestination destination = kMenuDestinations[index];
-            context.read<AppState>().navigateToPath(destination.path);
-          },
-          destinations: kMenuDestinations
-              .map(
-                (MenuDestination d) =>
-                    NavigationDestination(icon: Icon(d.icon), label: d.label),
-              )
-              .toList(),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: const BoxDecoration(
+            color: _kBrandLight,
+            border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
+          ),
+          child: Row(
+            children: kMenuDestinations.map((MenuDestination destination) {
+              final bool selected = appState.currentPath == destination.path;
+              return Expanded(
+                child: _ActionItem(
+                  destination: destination,
+                  selected: selected,
+                  onTap: () =>
+                      context.read<AppState>().navigateToPath(destination.path),
+                ),
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -153,6 +138,51 @@ class _AppShellState extends State<AppShell> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsPage()));
+  }
+}
+
+class _ActionItem extends StatelessWidget {
+  const _ActionItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final MenuDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = selected ? _kBrandOrange : _kBrandNavy;
+    final FontWeight weight = selected ? FontWeight.w700 : FontWeight.w600;
+
+    return Material(
+      color: _kBrandWhite,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(destination.icon, color: color),
+              const SizedBox(height: 4),
+              Text(
+                destination.label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: weight,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
