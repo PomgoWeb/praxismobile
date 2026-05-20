@@ -12,9 +12,8 @@ import 'ui/settings_page.dart';
 import 'webview/app_webview.dart';
 
 const Color _kBrandNavy = Color(0xFF06263F);
-const Color _kBrandOrange = Color(0xFFFF4A00);
+const Color _kBrandOrange = Color(0xFFC10F00);
 const Color _kBrandLight = Color(0xFFE8EEF3);
-const Color _kBrandWhite = Color(0xFFFFFFFF);
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -158,11 +157,11 @@ class _ActionItem extends StatelessWidget {
     final FontWeight weight = selected ? FontWeight.w700 : FontWeight.w600;
 
     return Material(
-      color: _kBrandWhite,
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
+        splashColor: _kBrandNavy.withValues(alpha: 0.08),
+        highlightColor: Colors.transparent,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Column(
