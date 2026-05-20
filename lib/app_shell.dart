@@ -87,7 +87,7 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: const BoxDecoration(
             color: _kActionBarBg,
             border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
@@ -168,18 +168,18 @@ class _ActionItem extends StatelessWidget {
         splashColor: _kBrandNavy.withValues(alpha: 0.08),
         highlightColor: Colors.transparent,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(destination.icon, color: color, size: 17),
-              const SizedBox(height: 1),
+              Icon(destination.icon, color: color, size: 20),
+              const SizedBox(height: 3),
               Text(
                 destination.label,
                 style: TextStyle(
                   color: color,
                   fontWeight: weight,
-                  fontSize: 10,
+                  fontSize: 11,
                   height: 1,
                 ),
               ),
