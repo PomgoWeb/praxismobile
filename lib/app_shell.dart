@@ -60,7 +60,14 @@ class _AppShellState extends State<AppShell> {
       appBar: AppBar(
         toolbarHeight: 34,
         titleSpacing: 8,
-        title: const Text(kAppName, style: TextStyle(fontSize: 14, height: 1)),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Image.asset('assets/icon/app_logo.png', height: 16),
+            const SizedBox(width: 6),
+            const Text(kAppName, style: TextStyle(fontSize: 14, height: 1)),
+          ],
+        ),
         actions: <Widget>[
           IconButton(
             onPressed: _openSettings,
