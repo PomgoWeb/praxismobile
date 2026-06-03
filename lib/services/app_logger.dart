@@ -6,17 +6,25 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AppLogger {
+  static const String fileName = 'rsapp.log';
   File? _logFile;
   bool _ready = false;
 
   Future<void> init() async {
     if (_ready) return;
     final Directory dir = await getApplicationDocumentsDirectory();
-    _logFile = File('${dir.path}${Platform.pathSeparator}rsapp.log');
+    _logFile = File('${dir.path}${Platform.pathSeparator}$fileName');
     if (!await _logFile!.exists()) {
       await _logFile!.create(recursive: true);
     }
     _ready = true;
+  }
+
+  Future<String> getLogFilePath() async {
+    if (!_ready) {
+      await init();
+    }
+    return _logFile?.path ?? '';
   }
 
   void log(

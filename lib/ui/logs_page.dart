@@ -13,6 +13,7 @@ class LogsPage extends StatefulWidget {
 
 class _LogsPageState extends State<LogsPage> {
   String _logs = '';
+  String _logFilePath = '';
   bool _loading = true;
 
   @override
@@ -28,10 +29,12 @@ class _LogsPageState extends State<LogsPage> {
 
     final AppLogger logger = context.read<AppLogger>();
     final String logs = await logger.readTail(maxLines: 250);
+    final String logFilePath = await logger.getLogFilePath();
 
     if (!mounted) return;
     setState(() {
       _logs = logs;
+      _logFilePath = logFilePath;
       _loading = false;
     });
   }
@@ -65,26 +68,72 @@ class _LogsPageState extends State<LogsPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _logs.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Aucun log disponible pour le moment.',
-                  textAlign: TextAlign.center,
-                ),
+          ? Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Aucun log disponible pour le moment.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  _LogLocation(filePath: _logFilePath),
+                ],
               ),
             )
-          : Padding(
+          : ListView(
               padding: const EdgeInsets.all(16),
-              child: SelectableText(
-                _logs,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  height: 1.45,
+              children: <Widget>[
+                _LogLocation(filePath: _logFilePath),
+                const SizedBox(height: 16),
+                SelectableText(
+                  _logs,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
                 ),
-              ),
+              ],
             ),
+    );
+  }
+}
+
+class _LogLocation extends StatelessWidget {
+  const _LogLocation({required this.filePath});
+
+  final String filePath;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7F9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              'Fichier accessible sur iPhone',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text('Fichiers > Sur mon iPhone > Praxis > rsapp.log'),
+            if (filePath.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              SelectableText(
+                filePath,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
