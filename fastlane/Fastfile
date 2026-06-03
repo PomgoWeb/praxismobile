@@ -55,12 +55,20 @@ platform :ios do
       code_sign_identity: "Apple Distribution"
     )
 
-    profile_path = ENV["SIGH_PROFILE_PATH"]
+    profile_path =
+      ENV["SIGH_PROFILE_PATH"] ||
+      ENV["sigh_com.praxismedia.ios_appstore_profile-path"]
     if profile_path && File.exist?(profile_path)
       update_project_provisioning(
         xcodeproj: File.join(root_dir, "ios", "Runner.xcodeproj"),
         target_filter: "Runner",
         build_configuration: "Release",
+        profile: profile_path
+      )
+      update_project_provisioning(
+        xcodeproj: File.join(root_dir, "ios", "Runner.xcodeproj"),
+        target_filter: "Runner",
+        build_configuration: "Profile",
         profile: profile_path
       )
     else
