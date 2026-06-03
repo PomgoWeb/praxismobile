@@ -3,6 +3,8 @@ default_platform(:ios)
 platform :ios do
   desc "Build and upload iOS app to TestFlight"
   lane :beta do
+    bootstrap_signing = ENV.fetch("BOOTSTRAP_SIGNING", "false") == "true"
+
     setup_ci if ENV["CI"]
 
     api_key = app_store_connect_api_key(
@@ -14,8 +16,11 @@ platform :ios do
       in_house: false
     )
 
-    readonly = ENV.fetch("MATCH_READONLY", "true") == "true"
-    force = ENV.fetch("MATCH_FORCE", "false") == "true"
+    readonly = bootstrap_signing ? false : ENV.fetch("MATCH_READONLY", "true") == "true"
+    force = bootstrap_signing ? true : ENV.fetch("MATCH_FORCE", "false") == "true"
+
+    ENV["MATCH_READONLY"] = readonly.to_s
+    ENV["MATCH_FORCE"] = force.to_s
 
     match(
       type: "appstore",
