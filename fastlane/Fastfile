@@ -1,3 +1,4 @@
+require "fileutils"
 require "shellwords"
 
 default_platform(:ios)
@@ -78,21 +79,36 @@ platform :ios do
     sh("cd #{project_dir} && flutter pub get")
     sh("cd #{project_dir} && flutter build ios --release --no-codesign --config-only")
 
-    ipa_path = build_app(
+    build_app(
       workspace: File.join(root_dir, "ios", "Runner.xcworkspace"),
       scheme: "Runner",
       clean: true,
       export_method: "app-store",
-      export_options: {
-        method: "app-store-connect",
-        signingStyle: "manual",
-        stripSwiftSymbols: true,
-        compileBitcode: false,
-        provisioningProfiles: {
-          "com.praxismedia.ios" => "match AppStore com.praxismedia.ios"
-        }
-      }
+      skip_package_ipa: true,
+      skip_package_pkg: true
     )
+
+    archive_path = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+    UI.user_error!("Archive not found after build_app") unless archive_path && File.directory?(archive_path)
+
+    export_path = File.join(root_dir, "build", "ios", "export")
+    FileUtils.rm_rf(export_path)
+    FileUtils.mkdir_p(export_path)
+
+    sh(
+      "xcodebuild",
+      "-exportArchive",
+      "-exportOptionsPlist",
+      File.join(root_dir, "ios", "ExportOptions.plist"),
+      "-archivePath",
+      archive_path,
+      "-exportPath",
+      export_path
+    )
+
+    ipa_glob = File.join(export_path, "*.ipa")
+    ipa_path = Dir[ipa_glob].first
+    UI.user_error!("IPA not found at #{ipa_glob}") unless ipa_path
 
     upload_to_testflight(
       api_key: api_key,
