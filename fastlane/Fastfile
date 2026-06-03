@@ -82,7 +82,7 @@ platform :ios do
       workspace: File.join(root_dir, "ios", "Runner.xcworkspace"),
       scheme: "Runner",
       clean: true,
-      export_method: "app-store-connect",
+      export_method: "app-store",
       export_options: {
         method: "app-store-connect",
         signingStyle: "manual",
