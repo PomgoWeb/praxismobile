@@ -32,20 +32,34 @@ class PushService {
   StreamSubscription<String>? _tokenRefreshSub;
   bool _initialized = false;
 
-  FirebaseMessaging get _messagingInstance {
-    if (_messaging != null) return _messaging!;
+  FirebaseMessaging? _ensureMessaging() {
+    if (_messaging != null) return _messaging;
     _logger.log('push_messaging_instance_start');
-    _messaging = FirebaseMessaging.instance;
-    _logger.log('push_messaging_instance_ready');
-    return _messaging!;
+    try {
+      _messaging = FirebaseMessaging.instance;
+      _logger.log('push_messaging_instance_ready');
+      return _messaging;
+    } catch (error, stackTrace) {
+      _logger.logError('push_messaging_instance_error', error, stackTrace);
+      return null;
+    }
   }
 
-  FlutterLocalNotificationsPlugin get _localNotificationsInstance {
-    if (_localNotifications != null) return _localNotifications!;
+  FlutterLocalNotificationsPlugin? _ensureLocalNotifications() {
+    if (_localNotifications != null) return _localNotifications;
     _logger.log('push_local_notifications_instance_start');
-    _localNotifications = FlutterLocalNotificationsPlugin();
-    _logger.log('push_local_notifications_instance_ready');
-    return _localNotifications!;
+    try {
+      _localNotifications = FlutterLocalNotificationsPlugin();
+      _logger.log('push_local_notifications_instance_ready');
+      return _localNotifications;
+    } catch (error, stackTrace) {
+      _logger.logError(
+        'push_local_notifications_instance_error',
+        error,
+        stackTrace,
+      );
+      return null;
+    }
   }
 
   Future<void> initialize(AppState appState) async {
@@ -54,11 +68,16 @@ class PushService {
 
     try {
       _logger.log('push_initialize_enter');
+      final FirebaseMessaging? messaging = _ensureMessaging();
+      if (messaging == null) {
+        _logger.log('push_initialize_aborted_no_messaging');
+        return;
+      }
       await _initLocalNotifications(appState);
       await _requestNotificationPermissions(appState);
       await _registerCurrentToken(appState);
 
-      _tokenRefreshSub = _messagingInstance.onTokenRefresh.listen(
+      _tokenRefreshSub = messaging.onTokenRefresh.listen(
         (String token) =>
             _registerTokenToWordPress(token: token, appState: appState),
         onError: (Object error, StackTrace stackTrace) {
@@ -76,8 +95,7 @@ class PushService {
         _handleMessageNavigation(message, appState);
       });
 
-      final RemoteMessage? initialMessage = await _messagingInstance
-          .getInitialMessage();
+      final RemoteMessage? initialMessage = await messaging.getInitialMessage();
       if (initialMessage != null) {
         _logger.log('push_get_initial_message');
         _handleMessageNavigation(initialMessage, appState);
@@ -103,7 +121,14 @@ class PushService {
       iOS: iosSettings,
     );
 
-    await _localNotificationsInstance.initialize(
+    final FlutterLocalNotificationsPlugin? localNotifications =
+        _ensureLocalNotifications();
+    if (localNotifications == null) {
+      _logger.log('push_local_notifications_unavailable');
+      return;
+    }
+
+    await localNotifications.initialize(
       settings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final String? payload = response.payload;
@@ -117,9 +142,15 @@ class PushService {
     await appState.setNotificationPrompted(true);
 
     bool permissionGranted = false;
+    final FirebaseMessaging? messaging = _ensureMessaging();
+    if (messaging == null) {
+      _logger.log('push_permissions_skipped_no_messaging');
+      await appState.setNotificationEnabled(false);
+      return;
+    }
+
     if (Platform.isIOS) {
-      final NotificationSettings settings = await _messagingInstance
-          .requestPermission(
+      final NotificationSettings settings = await messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
@@ -128,22 +159,24 @@ class PushService {
           settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
 
+      final FlutterLocalNotificationsPlugin? localNotifications =
+          _ensureLocalNotifications();
       final IOSFlutterLocalNotificationsPlugin? iosPlatform =
-          _localNotificationsInstance
-              .resolvePlatformSpecificImplementation<
-                IOSFlutterLocalNotificationsPlugin
-              >();
+          localNotifications?.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
       await iosPlatform?.requestPermissions(
         alert: true,
         badge: true,
         sound: true,
       );
     } else if (Platform.isAndroid) {
+      final FlutterLocalNotificationsPlugin? localNotifications =
+          _ensureLocalNotifications();
       final AndroidFlutterLocalNotificationsPlugin? androidPlatform =
-          _localNotificationsInstance
-              .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin
-              >();
+          localNotifications?.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       final bool? granted = await androidPlatform
           ?.requestNotificationsPermission();
       permissionGranted = granted ?? false;
@@ -154,7 +187,12 @@ class PushService {
 
   Future<void> _registerCurrentToken(AppState appState) async {
     try {
-      final String? token = await _messagingInstance.getToken();
+      final FirebaseMessaging? messaging = _ensureMessaging();
+      if (messaging == null) {
+        _logger.log('push_register_skipped_no_messaging');
+        return;
+      }
+      final String? token = await messaging.getToken();
       if (token == null || token.trim().isEmpty) return;
       await _registerTokenToWordPress(token: token, appState: appState);
     } on Exception catch (error, stackTrace) {
@@ -201,7 +239,14 @@ class PushService {
       iOS: iosDetails,
     );
 
-    await _localNotificationsInstance.show(
+    final FlutterLocalNotificationsPlugin? localNotifications =
+        _ensureLocalNotifications();
+    if (localNotifications == null) {
+      _logger.log('push_foreground_notification_skipped_no_plugin');
+      return;
+    }
+
+    await localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
