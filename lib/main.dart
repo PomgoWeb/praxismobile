@@ -51,7 +51,7 @@ Future<void> _bootstrapApplication({
   List<ConnectivityResult> initialConnectivity = const <ConnectivityResult>[];
 
   try {
-    await logger.init();
+    await logger.init().timeout(const Duration(seconds: 2));
   } catch (_) {
     // Logger init is non-critical for app startup.
   }
@@ -59,29 +59,49 @@ Future<void> _bootstrapApplication({
   logger.log('bootstrap_start');
 
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp().timeout(const Duration(seconds: 5));
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    logger.log('firebase_init_ok');
   } on Exception catch (error, stackTrace) {
     logger.log('firebase_init_error', error: error, stackTrace: stackTrace);
   }
 
   try {
-    prefs = await SharedPreferences.getInstance();
+    prefs = await SharedPreferences.getInstance().timeout(
+      const Duration(seconds: 3),
+    );
+    logger.log('prefs_init_ok');
   } on Exception catch (error, stackTrace) {
     logger.log('prefs_init_error', error: error, stackTrace: stackTrace);
   }
 
   try {
-    initialConnectivity = await Connectivity().checkConnectivity();
+    initialConnectivity = await Connectivity().checkConnectivity().timeout(
+      const Duration(seconds: 3),
+    );
+    logger.log(
+      'connectivity_init_ok',
+      details: <String, Object?>{
+        'status': initialConnectivity
+            .map((ConnectivityResult e) => e.name)
+            .join(','),
+      },
+    );
   } on Exception catch (error, stackTrace) {
     logger.log('connectivity_init_error', error: error, stackTrace: stackTrace);
   }
 
-  await appState.hydrateFromPrefs(prefs: prefs);
-  appState.updateConnectivity(initialConnectivity);
-  appState.markBootstrapComplete();
-
-  logger.log('bootstrap_ready');
+  try {
+    await appState
+        .hydrateFromPrefs(prefs: prefs)
+        .timeout(const Duration(seconds: 2));
+    appState.updateConnectivity(initialConnectivity);
+  } on Exception catch (error, stackTrace) {
+    logger.log('app_state_hydrate_error', error: error, stackTrace: stackTrace);
+  } finally {
+    appState.markBootstrapComplete();
+    logger.log('bootstrap_ready');
+  }
 }
 
 class PraxisMediaApp extends StatelessWidget {

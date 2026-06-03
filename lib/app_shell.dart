@@ -9,7 +9,6 @@ import 'models/app_state.dart';
 import 'services/app_logger.dart';
 import 'services/push_service.dart';
 import 'ui/settings_page.dart';
-import 'ui/startup_splash.dart';
 import 'webview/app_webview.dart';
 
 const Color _kBrandNavy = Color(0xFF06263F);
@@ -82,8 +81,6 @@ class _AppShellState extends State<AppShell> {
                 child: _OfflineView(onRetry: _retryConnectivityCheck),
               ),
             ),
-          if (!appState.bootstrapComplete)
-            const Positioned.fill(child: StartupSplash()),
         ],
       ),
       bottomNavigationBar: SafeArea(
