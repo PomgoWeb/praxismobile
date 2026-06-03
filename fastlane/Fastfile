@@ -51,12 +51,22 @@ platform :ios do
       "app-store"
     )
 
-    ipa_path = Dir["build/ios/ipa/*.ipa"].max_by { |path| File.mtime(path) }
-    UI.user_error!("No IPA found in build/ios/ipa") unless ipa_path
+    archive_path = "build/ios/archive/Runner.xcarchive"
+    UI.user_error!("No archive found at #{archive_path}") unless File.directory?(archive_path)
+
+    build_app(
+      skip_build_archive: true,
+      archive_path: archive_path,
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "com.praxismedia.ios" => "match AppStore com.praxismedia.ios"
+        }
+      }
+    )
 
     upload_to_testflight(
       api_key: api_key,
-      ipa: ipa_path,
       skip_waiting_for_build_processing: true
     )
   end
