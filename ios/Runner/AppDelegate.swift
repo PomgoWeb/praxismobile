@@ -48,10 +48,10 @@ import UIKit
 
       let handle = try FileHandle(forWritingTo: logFileUrl)
       defer {
-        try? handle.close()
+        handle.closeFile()
       }
-      try handle.seekToEnd()
-      try handle.write(contentsOf: data)
+      handle.seekToEndOfFile()
+      handle.write(data)
     } catch {
       NSLog("%@", line)
       NSLog("ios.nativeLogWriteFailed %@", error.localizedDescription)
