@@ -16,7 +16,7 @@ class StartupSplash extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Image.asset('assets/icon/app_logo.png', width: 132, height: 132),
+            Image.asset('assets/icon/app_logo.png', width: 56, height: 56),
             if (showLoader) ...<Widget>[
               const SizedBox(height: 28),
               const SizedBox(
