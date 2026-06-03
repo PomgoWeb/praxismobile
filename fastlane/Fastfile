@@ -75,8 +75,6 @@ platform :ios do
       UI.important("SIGH_PROFILE_PATH not found; using project provisioning settings.")
     end
 
-    export_options = File.join(root_dir, "ios", "ExportOptions.plist").shellescape
-
     sh("cd #{project_dir} && flutter pub get")
     sh("cd #{project_dir} && flutter build ios --release --no-codesign --config-only")
 
@@ -84,9 +82,9 @@ platform :ios do
       workspace: File.join(root_dir, "ios", "Runner.xcworkspace"),
       scheme: "Runner",
       clean: true,
-      export_method: "app-store",
+      export_method: "app-store-connect",
       export_options: {
-        method: "app-store",
+        method: "app-store-connect",
         signingStyle: "manual",
         stripSwiftSymbols: true,
         compileBitcode: false,
