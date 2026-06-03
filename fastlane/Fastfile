@@ -1,3 +1,5 @@
+require "shellwords"
+
 default_platform(:ios)
 
 platform :ios do
@@ -6,6 +8,9 @@ platform :ios do
     bootstrap_signing = ENV.fetch("BOOTSTRAP_SIGNING", "false") == "true"
 
     setup_ci if ENV["CI"]
+
+    root_dir = File.expand_path("..", __dir__)
+    project_dir = root_dir.shellescape
 
     api_key = app_store_connect_api_key(
       key_id: ENV["ASC_KEY_ID"],
@@ -30,43 +35,39 @@ platform :ios do
       storage_mode: "git",
       readonly: readonly,
       force: force,
+      skip_confirmation: true,
       api_key: api_key
     )
 
-    update_code_signing_settings(
-      use_automatic_signing: false,
-      path: "ios/Runner.xcodeproj",
-      team_id: ENV["APPLE_TEAM_ID"],
-      bundle_identifier: "com.praxismedia.ios",
-      profile_name: "match AppStore com.praxismedia.ios",
-      code_sign_identity: "Apple Distribution"
+    update_project_team(
+      path: File.join(root_dir, "ios", "Runner.xcodeproj"),
+      teamid: ENV["APPLE_TEAM_ID"]
     )
 
-    sh(
-      "flutter",
-      "build",
-      "ipa",
-      "--release",
-      "--export-method",
-      "app-store"
-    )
+    profile_path = ENV["SIGH_PROFILE_PATH"]
+    if profile_path && File.exist?(profile_path)
+      update_project_provisioning(
+        xcodeproj: File.join(root_dir, "ios", "Runner.xcodeproj"),
+        target_filter: "Runner",
+        build_configuration: "Release",
+        profile: profile_path
+      )
+    else
+      UI.important("SIGH_PROFILE_PATH not found; using project provisioning settings.")
+    end
 
-    archive_path = "build/ios/archive/Runner.xcarchive"
-    UI.user_error!("No archive found at #{archive_path}") unless File.directory?(archive_path)
+    export_options = File.join(root_dir, "ios", "ExportOptions.plist").shellescape
 
-    build_app(
-      skip_build_archive: true,
-      archive_path: archive_path,
-      export_method: "app-store",
-      export_options: {
-        provisioningProfiles: {
-          "com.praxismedia.ios" => "match AppStore com.praxismedia.ios"
-        }
-      }
-    )
+    sh("cd #{project_dir} && flutter pub get")
+    sh("cd #{project_dir} && flutter build ipa --release --export-options-plist=#{export_options}")
+
+    ipa_glob = File.join(root_dir, "build", "ios", "ipa", "*.ipa")
+    ipa_path = Dir[ipa_glob].first
+    UI.user_error!("IPA not found at #{ipa_glob}") unless ipa_path
 
     upload_to_testflight(
       api_key: api_key,
+      ipa: ipa_path,
       skip_waiting_for_build_processing: true
     )
   end
