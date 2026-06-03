@@ -64,6 +64,19 @@ jobs:
           MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
-          MATCH_READONLY: ${{ github.event.inputs.bootstrap_signing == 'true' && 'false' || 'true' }}
-          MATCH_FORCE: ${{ github.event.inputs.bootstrap_signing == 'true' && 'true' || 'false' }}
-        run: bundle exec fastlane ios beta
+          BOOTSTRAP_SIGNING: ${{ github.event.inputs.bootstrap_signing }}
+        run: |
+          echo "bootstrap_signing=${BOOTSTRAP_SIGNING}"
+
+          if [ "${BOOTSTRAP_SIGNING}" = "true" ]; then
+            export MATCH_READONLY="false"
+            export MATCH_FORCE="true"
+          else
+            export MATCH_READONLY="true"
+            export MATCH_FORCE="false"
+          fi
+
+          echo "MATCH_READONLY=${MATCH_READONLY}"
+          echo "MATCH_FORCE=${MATCH_FORCE}"
+
+          bundle exec fastlane ios beta
