@@ -35,6 +35,7 @@ class _AppWebViewState extends State<AppWebView>
     super.initState();
     _startupSplashTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted) return;
+      context.read<AppLogger>().log('startup_splash_timeout');
       setState(() {
         _showStartupSplash = false;
       });
@@ -69,6 +70,7 @@ class _AppWebViewState extends State<AppWebView>
           onWebViewCreated: (InAppWebViewController controller) {
             _controller = controller;
             appState.markWebViewReady();
+            context.read<AppLogger>().log('webview_created');
           },
           onLoadStart: (InAppWebViewController controller, WebUri? uri) {
             setState(() {

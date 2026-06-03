@@ -61,4 +61,31 @@ class AppLogger {
       // Never block app execution because of logging issues.
     }
   }
+
+  Future<String> readContents() async {
+    if (!_ready) {
+      await init();
+    }
+    if (_logFile == null) return '';
+
+    try {
+      return await _logFile!.readAsString();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<String> readTail({int maxLines = 200}) async {
+    final String contents = await readContents();
+    if (contents.isEmpty) return '';
+
+    final List<String> lines = const LineSplitter()
+        .convert(contents)
+        .where((String line) => line.trim().isNotEmpty)
+        .toList();
+    if (lines.length <= maxLines) {
+      return lines.join('\n');
+    }
+    return lines.sublist(lines.length - maxLines).join('\n');
+  }
 }

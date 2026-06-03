@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../config/app_config.dart';
 import '../models/app_state.dart';
 import '../services/app_logger.dart';
+import 'logs_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -53,6 +54,18 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(title: const Text('Application'), subtitle: Text(kAppName)),
           ListTile(title: const Text('Version'), subtitle: Text(_versionLabel)),
           ListTile(title: const Text('URL de base'), subtitle: Text(kBaseUrl)),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: const Text('Logs'),
+            subtitle: const Text(
+              'Afficher les logs techniques et les copier pour le support.',
+            ),
+            onTap: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => const LogsPage()));
+            },
+          ),
           SwitchListTile(
             value: appState.notificationsEnabled,
             onChanged: null,
