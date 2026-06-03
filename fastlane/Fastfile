@@ -94,17 +94,27 @@ platform :ios do
     export_path = File.join(root_dir, "build", "ios", "export")
     FileUtils.rm_rf(export_path)
     FileUtils.mkdir_p(export_path)
+    app_path = File.join(archive_path, "Products", "Applications", "Runner.app")
 
-    sh(
-      "xcodebuild",
-      "-exportArchive",
-      "-exportOptionsPlist",
-      File.join(root_dir, "ios", "ExportOptions.plist"),
-      "-archivePath",
-      archive_path,
-      "-exportPath",
-      export_path
-    )
+    begin
+      sh(
+        "xcodebuild",
+        "-exportArchive",
+        "-exportOptionsPlist",
+        File.join(root_dir, "ios", "ExportOptions.plist"),
+        "-archivePath",
+        archive_path,
+        "-exportPath",
+        export_path
+      )
+    rescue => error
+      UI.important("xcodebuild export failed; dumping archive diagnostics")
+      sh(%Q[bash -lc 'set +e; echo "== ARCHIVE APP CONTENTS =="; find #{app_path.shellescape} -maxdepth 3 \\( -name "*.framework" -o -name "*.dylib" -o -name "*.appex" -o -name "Runner" \\) -print'])
+      sh(%Q[bash -lc 'set +e; echo "== BINARY ARCHITECTURES =="; find #{app_path.shellescape} -type f \\( -path "*/Frameworks/*" -o -name "Runner" -o -name "*.dylib" -o -path "*/PlugIns/*.appex/*" \\) | while IFS= read -r f; do echo "== $f =="; xcrun lipo -info "$f" 2>/dev/null || file "$f" || true; done'])
+      sh(%Q[bash -lc 'set +e; echo "== APP ENTITLEMENTS =="; codesign -d --entitlements :- #{app_path.shellescape} 2>&1 || true'])
+      sh(%Q[bash -lc 'set +e; for appex in #{app_path.shellescape}/PlugIns/*.appex; do [ -e "$appex" ] || continue; echo "== APPEX ENTITLEMENTS: $appex =="; codesign -d --entitlements :- "$appex" 2>&1 || true; done'])
+      raise error
+    end
 
     ipa_glob = File.join(export_path, "*.ipa")
     ipa_path = Dir[ipa_glob].first
