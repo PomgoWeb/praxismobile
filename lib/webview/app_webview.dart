@@ -23,11 +23,29 @@ class _AppWebViewState extends State<AppWebView>
   InAppWebViewController? _controller;
   int _lastConsumedRequestId = -1;
   bool _isLoading = true;
-  bool _hasCompletedFirstLoad = false;
+  bool _showStartupSplash = true;
   String? _lastError;
+  Timer? _startupSplashTimer;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _startupSplashTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() {
+        _showStartupSplash = false;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _startupSplashTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +72,11 @@ class _AppWebViewState extends State<AppWebView>
           },
           onLoadStart: (InAppWebViewController controller, WebUri? uri) {
             setState(() {
+              _showStartupSplash = false;
               _isLoading = true;
               _lastError = null;
             });
+            _startupSplashTimer?.cancel();
             context.read<AppLogger>().log(
               'webview_load_start',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
@@ -64,10 +84,11 @@ class _AppWebViewState extends State<AppWebView>
           },
           onLoadStop: (InAppWebViewController controller, WebUri? uri) {
             setState(() {
+              _showStartupSplash = false;
               _isLoading = false;
-              _hasCompletedFirstLoad = true;
               _lastError = null;
             });
+            _startupSplashTimer?.cancel();
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
             context.read<AppLogger>().log(
@@ -82,9 +103,11 @@ class _AppWebViewState extends State<AppWebView>
                 WebResourceError error,
               ) {
                 setState(() {
+                  _showStartupSplash = false;
                   _isLoading = false;
                   _lastError = error.description;
                 });
+                _startupSplashTimer?.cancel();
                 context.read<AppLogger>().log(
                   'webview_load_error',
                   details: <String, Object?>{
@@ -110,7 +133,7 @@ class _AppWebViewState extends State<AppWebView>
                 return NavigationActionPolicy.ALLOW;
               },
         ),
-        if (!_hasCompletedFirstLoad)
+        if (_showStartupSplash)
           const Positioned.fill(child: StartupSplash())
         else if (_isLoading)
           const Align(
