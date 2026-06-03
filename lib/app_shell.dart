@@ -9,6 +9,7 @@ import 'models/app_state.dart';
 import 'services/app_logger.dart';
 import 'services/push_service.dart';
 import 'ui/settings_page.dart';
+import 'ui/startup_splash.dart';
 import 'webview/app_webview.dart';
 
 const Color _kBrandNavy = Color(0xFF06263F);
@@ -37,15 +38,6 @@ class _AppShellState extends State<AppShell> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_pushStarted) return;
-    _pushStarted = true;
-    _pushService = context.read<PushService>();
-    unawaited(_startPush());
-  }
-
-  @override
   void dispose() {
     unawaited(_connectivitySub?.cancel());
     unawaited(_pushService?.dispose());
@@ -55,6 +47,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
+    _ensurePushStarted(appState);
 
     return Scaffold(
       appBar: AppBar(
@@ -89,6 +82,8 @@ class _AppShellState extends State<AppShell> {
                 child: _OfflineView(onRetry: _retryConnectivityCheck),
               ),
             ),
+          if (!appState.bootstrapComplete)
+            const Positioned.fill(child: StartupSplash()),
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -127,6 +122,16 @@ class _AppShellState extends State<AppShell> {
     } on Exception catch (error, stackTrace) {
       logger.log('push_init_error', error: error, stackTrace: stackTrace);
     }
+  }
+
+  void _ensurePushStarted(AppState appState) {
+    if (_pushStarted || !appState.bootstrapComplete) return;
+    _pushStarted = true;
+    _pushService ??= context.read<PushService>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_startPush());
+    });
   }
 
   void _startConnectivityListener() {

@@ -21,10 +21,34 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final AppLogger logger = AppLogger();
+  final AppState appState = AppState(
+    prefs: null,
+    initialConnectivity: const <ConnectivityResult>[],
+  );
+  final WpApi wpApi = WpApi(logger: logger);
+  final PushService pushService = PushService(logger: logger, wpApi: wpApi);
+
+  runApp(
+    MultiProvider(
+      providers: [
+        Provider<AppLogger>.value(value: logger),
+        Provider<WpApi>.value(value: wpApi),
+        Provider<PushService>.value(value: pushService),
+        ChangeNotifierProvider<AppState>.value(value: appState),
+      ],
+      child: const PraxisMediaApp(),
+    ),
+  );
+
+  unawaited(_bootstrapApplication(logger: logger, appState: appState));
+}
+
+Future<void> _bootstrapApplication({
+  required AppLogger logger,
+  required AppState appState,
+}) async {
   SharedPreferences? prefs;
-  List<ConnectivityResult> initialConnectivity = <ConnectivityResult>[
-    ConnectivityResult.none,
-  ];
+  List<ConnectivityResult> initialConnectivity = const <ConnectivityResult>[];
 
   try {
     await logger.init();
@@ -53,28 +77,11 @@ Future<void> main() async {
     logger.log('connectivity_init_error', error: error, stackTrace: stackTrace);
   }
 
-  final AppState appState = AppState(
-    prefs: prefs,
-    initialConnectivity: initialConnectivity,
-  );
-  await appState.hydrateFromPrefs();
-
-  final WpApi wpApi = WpApi(logger: logger);
-  final PushService pushService = PushService(logger: logger, wpApi: wpApi);
+  await appState.hydrateFromPrefs(prefs: prefs);
+  appState.updateConnectivity(initialConnectivity);
+  appState.markBootstrapComplete();
 
   logger.log('bootstrap_ready');
-
-  runApp(
-    MultiProvider(
-      providers: [
-        Provider<AppLogger>.value(value: logger),
-        Provider<WpApi>.value(value: wpApi),
-        Provider<PushService>.value(value: pushService),
-        ChangeNotifierProvider<AppState>.value(value: appState),
-      ],
-      child: const PraxisMediaApp(),
-    ),
-  );
 }
 
 class PraxisMediaApp extends StatelessWidget {

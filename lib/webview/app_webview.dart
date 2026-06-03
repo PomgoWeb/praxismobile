@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config/app_config.dart';
 import '../models/app_state.dart';
 import '../services/app_logger.dart';
+import '../ui/startup_splash.dart';
 import '../utils/url_utils.dart';
 
 class AppWebView extends StatefulWidget {
@@ -22,6 +23,7 @@ class _AppWebViewState extends State<AppWebView>
   InAppWebViewController? _controller;
   int _lastConsumedRequestId = -1;
   bool _isLoading = true;
+  bool _hasCompletedFirstLoad = false;
   String? _lastError;
 
   @override
@@ -63,6 +65,7 @@ class _AppWebViewState extends State<AppWebView>
           onLoadStop: (InAppWebViewController controller, WebUri? uri) {
             setState(() {
               _isLoading = false;
+              _hasCompletedFirstLoad = true;
               _lastError = null;
             });
             appState.markLoadedUrl(uri?.toString());
@@ -107,7 +110,9 @@ class _AppWebViewState extends State<AppWebView>
                 return NavigationActionPolicy.ALLOW;
               },
         ),
-        if (_isLoading)
+        if (!_hasCompletedFirstLoad)
+          const Positioned.fill(child: StartupSplash())
+        else if (_isLoading)
           const Align(
             alignment: Alignment.topCenter,
             child: LinearProgressIndicator(minHeight: 2),

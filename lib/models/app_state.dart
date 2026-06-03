@@ -10,11 +10,14 @@ class AppState extends ChangeNotifier {
     required SharedPreferences? prefs,
     required List<ConnectivityResult> initialConnectivity,
   }) : _prefs = prefs,
-       _isOffline = initialConnectivity.contains(ConnectivityResult.none);
+       _isOffline =
+           initialConnectivity.isNotEmpty &&
+           initialConnectivity.contains(ConnectivityResult.none);
 
-  final SharedPreferences? _prefs;
+  SharedPreferences? _prefs;
 
   bool _isOffline;
+  bool _bootstrapComplete = false;
   bool _webViewReady = false;
   String _currentPath = '/';
   String _lastLoadedUrl = buildUrl(kBaseUrl, '/').toString();
@@ -24,6 +27,7 @@ class AppState extends ChangeNotifier {
   bool _notificationsEnabled = false;
 
   bool get isOffline => _isOffline;
+  bool get bootstrapComplete => _bootstrapComplete;
   bool get webViewReady => _webViewReady;
   String get currentPath => _currentPath;
   String get lastLoadedUrl => _lastLoadedUrl;
@@ -32,9 +36,16 @@ class AppState extends ChangeNotifier {
   bool get notificationsPrompted => _notificationsPrompted;
   bool get notificationsEnabled => _notificationsEnabled;
 
-  Future<void> hydrateFromPrefs() async {
+  Future<void> hydrateFromPrefs({SharedPreferences? prefs}) async {
+    _prefs = prefs ?? _prefs;
     _notificationsPrompted = _prefs?.getBool('notificationsPrompted') ?? false;
     _notificationsEnabled = _prefs?.getBool('notificationsEnabled') ?? false;
+    notifyListeners();
+  }
+
+  void markBootstrapComplete() {
+    if (_bootstrapComplete) return;
+    _bootstrapComplete = true;
     notifyListeners();
   }
 
