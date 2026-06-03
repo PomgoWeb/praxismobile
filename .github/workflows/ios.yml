@@ -1,0 +1,69 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap_signing:
+        description: "Créer/régénérer les certificats et profils avec fastlane match"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  build_testflight:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.7"
+          channel: "stable"
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Install iOS dependencies
+        run: |
+          flutter pub get
+          cd ios
+          pod install
+
+      - name: Verify Firebase iOS config
+        run: |
+          if [ ! -f "ios/Runner/GoogleService-Info.plist" ]; then
+            echo "Missing ios/Runner/GoogleService-Info.plist"
+            exit 1
+          fi
+
+      - name: Setup SSH for match repo
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_DEPLOY_KEY }}
+
+      - name: Verify SSH access to match repo
+        run: |
+          ssh -o StrictHostKeyChecking=no -T git@github.com || true
+          git ls-remote "${{ secrets.MATCH_GIT_URL }}" HEAD
+
+      - name: Build and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+          MATCH_READONLY: ${{ github.event.inputs.bootstrap_signing == 'true' && 'false' || 'true' }}
+          MATCH_FORCE: ${{ github.event.inputs.bootstrap_signing == 'true' && 'true' || 'false' }}
+        run: bundle exec fastlane ios beta
