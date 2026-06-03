@@ -26,23 +26,39 @@ class PushService {
 
   final AppLogger _logger;
   final WpApi _wpApi;
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications =
-      FlutterLocalNotificationsPlugin();
+  FirebaseMessaging? _messaging;
+  FlutterLocalNotificationsPlugin? _localNotifications;
 
   StreamSubscription<String>? _tokenRefreshSub;
   bool _initialized = false;
+
+  FirebaseMessaging get _messagingInstance {
+    if (_messaging != null) return _messaging!;
+    _logger.log('push_messaging_instance_start');
+    _messaging = FirebaseMessaging.instance;
+    _logger.log('push_messaging_instance_ready');
+    return _messaging!;
+  }
+
+  FlutterLocalNotificationsPlugin get _localNotificationsInstance {
+    if (_localNotifications != null) return _localNotifications!;
+    _logger.log('push_local_notifications_instance_start');
+    _localNotifications = FlutterLocalNotificationsPlugin();
+    _logger.log('push_local_notifications_instance_ready');
+    return _localNotifications!;
+  }
 
   Future<void> initialize(AppState appState) async {
     if (_initialized) return;
     _initialized = true;
 
     try {
+      _logger.log('push_initialize_enter');
       await _initLocalNotifications(appState);
       await _requestNotificationPermissions(appState);
       await _registerCurrentToken(appState);
 
-      _tokenRefreshSub = _messaging.onTokenRefresh.listen(
+      _tokenRefreshSub = _messagingInstance.onTokenRefresh.listen(
         (String token) =>
             _registerTokenToWordPress(token: token, appState: appState),
         onError: (Object error, StackTrace stackTrace) {
@@ -60,7 +76,7 @@ class PushService {
         _handleMessageNavigation(message, appState);
       });
 
-      final RemoteMessage? initialMessage = await _messaging
+      final RemoteMessage? initialMessage = await _messagingInstance
           .getInitialMessage();
       if (initialMessage != null) {
         _logger.log('push_get_initial_message');
@@ -87,7 +103,7 @@ class PushService {
       iOS: iosSettings,
     );
 
-    await _localNotifications.initialize(
+    await _localNotificationsInstance.initialize(
       settings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final String? payload = response.payload;
@@ -102,7 +118,8 @@ class PushService {
 
     bool permissionGranted = false;
     if (Platform.isIOS) {
-      final NotificationSettings settings = await _messaging.requestPermission(
+      final NotificationSettings settings = await _messagingInstance
+          .requestPermission(
         alert: true,
         badge: true,
         sound: true,
@@ -112,7 +129,7 @@ class PushService {
           settings.authorizationStatus == AuthorizationStatus.provisional;
 
       final IOSFlutterLocalNotificationsPlugin? iosPlatform =
-          _localNotifications
+          _localNotificationsInstance
               .resolvePlatformSpecificImplementation<
                 IOSFlutterLocalNotificationsPlugin
               >();
@@ -123,7 +140,7 @@ class PushService {
       );
     } else if (Platform.isAndroid) {
       final AndroidFlutterLocalNotificationsPlugin? androidPlatform =
-          _localNotifications
+          _localNotificationsInstance
               .resolvePlatformSpecificImplementation<
                 AndroidFlutterLocalNotificationsPlugin
               >();
@@ -137,7 +154,7 @@ class PushService {
 
   Future<void> _registerCurrentToken(AppState appState) async {
     try {
-      final String? token = await _messaging.getToken();
+      final String? token = await _messagingInstance.getToken();
       if (token == null || token.trim().isEmpty) return;
       await _registerTokenToWordPress(token: token, appState: appState);
     } on Exception catch (error, stackTrace) {
@@ -184,7 +201,7 @@ class PushService {
       iOS: iosDetails,
     );
 
-    await _localNotifications.show(
+    await _localNotificationsInstance.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,

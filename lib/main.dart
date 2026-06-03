@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -24,6 +25,20 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   logger.log('widgets_flutter_binding_ready');
 
+  FlutterError.onError = (FlutterErrorDetails details) {
+    logger.logError(
+      'flutter_error',
+      details.exception,
+      details.stack ?? StackTrace.current,
+    );
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stackTrace) {
+    logger.logError('platform_dispatcher_error', error, stackTrace);
+    return false;
+  };
+  logger.log('global_error_handlers_ready');
+
   unawaited(logger.init());
   logger.log('logger_init_requested');
 
@@ -34,8 +49,6 @@ Future<void> main() async {
   logger.log('app_state_created');
   final WpApi wpApi = WpApi(logger: logger);
   logger.log('wp_api_created');
-  final PushService pushService = PushService(logger: logger, wpApi: wpApi);
-  logger.log('push_service_created');
 
   logger.log('run_app_before');
   runApp(
@@ -43,7 +56,6 @@ Future<void> main() async {
       providers: [
         Provider<AppLogger>.value(value: logger),
         Provider<WpApi>.value(value: wpApi),
-        Provider<PushService>.value(value: pushService),
         ChangeNotifierProvider<AppState>.value(value: appState),
       ],
       child: const PraxisMediaApp(),

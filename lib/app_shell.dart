@@ -8,6 +8,7 @@ import 'config/app_config.dart';
 import 'models/app_state.dart';
 import 'services/app_logger.dart';
 import 'services/push_service.dart';
+import 'services/wp_api.dart';
 import 'ui/settings_page.dart';
 import 'webview/app_webview.dart';
 
@@ -29,6 +30,7 @@ class _AppShellState extends State<AppShell> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _pushStarted = false;
   bool _loggedFirstBuild = false;
+  Timer? _pushStartTimer;
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     unawaited(_connectivitySub?.cancel());
+    _pushStartTimer?.cancel();
     unawaited(_pushService?.dispose());
     super.dispose();
   }
@@ -120,9 +123,15 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> _startPush() async {
     final AppLogger logger = context.read<AppLogger>();
-    final PushService pushService = _pushService!;
+    final WpApi wpApi = context.read<WpApi>();
     final AppState appState = context.read<AppState>();
     try {
+      if (_pushService == null) {
+        logger.log('push_service_create_start');
+        _pushService = PushService(logger: logger, wpApi: wpApi);
+        logger.log('push_service_created');
+      }
+      final PushService pushService = _pushService!;
       logger.log('push_init_start');
       await pushService.initialize(appState);
       logger.log('push_ready');
@@ -134,8 +143,8 @@ class _AppShellState extends State<AppShell> {
   void _ensurePushStarted(AppState appState) {
     if (_pushStarted || !appState.bootstrapComplete) return;
     _pushStarted = true;
-    _pushService ??= context.read<PushService>();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    context.read<AppLogger>().log('push_init_scheduled');
+    _pushStartTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
       unawaited(_startPush());
     });
