@@ -44,6 +44,17 @@ platform :ios do
       teamid: ENV["APPLE_TEAM_ID"]
     )
 
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: File.join(root_dir, "ios", "Runner.xcodeproj"),
+      team_id: ENV["APPLE_TEAM_ID"],
+      targets: ["Runner"],
+      build_configurations: ["Release", "Profile"],
+      bundle_identifier: "com.praxismedia.ios",
+      profile_name: "match AppStore com.praxismedia.ios",
+      code_sign_identity: "Apple Distribution"
+    )
+
     profile_path = ENV["SIGH_PROFILE_PATH"]
     if profile_path && File.exist?(profile_path)
       update_project_provisioning(
