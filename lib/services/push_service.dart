@@ -30,6 +30,7 @@ class PushService {
   FlutterLocalNotificationsPlugin? _localNotifications;
 
   StreamSubscription<String>? _tokenRefreshSub;
+  Timer? _tokenRetryTimer;
   bool _initialized = false;
 
   FirebaseMessaging? _ensureMessaging() {
@@ -107,6 +108,7 @@ class PushService {
 
   Future<void> dispose() async {
     await _tokenRefreshSub?.cancel();
+    _tokenRetryTimer?.cancel();
   }
 
   Future<void> _initLocalNotifications(AppState appState) async {
@@ -155,6 +157,13 @@ class PushService {
         badge: true,
         sound: true,
       );
+      _logger.log(
+        'push_permission_status',
+        details: <String, Object?>{
+          'platform': 'ios',
+          'status': settings.authorizationStatus.name,
+        },
+      );
       permissionGranted =
           settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
@@ -180,6 +189,13 @@ class PushService {
       final bool? granted = await androidPlatform
           ?.requestNotificationsPermission();
       permissionGranted = granted ?? false;
+      _logger.log(
+        'push_permission_status',
+        details: <String, Object?>{
+          'platform': 'android',
+          'granted': permissionGranted,
+        },
+      );
     }
 
     await appState.setNotificationEnabled(permissionGranted);
@@ -192,11 +208,26 @@ class PushService {
         _logger.log('push_register_skipped_no_messaging');
         return;
       }
+      if (Platform.isIOS) {
+        final String? apnsToken = await messaging.getAPNSToken();
+        _logger.log(
+          'push_apns_token_state',
+          details: <String, Object?>{
+            'available': apnsToken != null && apnsToken.trim().isNotEmpty,
+          },
+        );
+      }
+
       final String? token = await messaging.getToken();
-      if (token == null || token.trim().isEmpty) return;
+      if (token == null || token.trim().isEmpty) {
+        _logger.log('push_token_empty');
+        _scheduleTokenRetry(appState);
+        return;
+      }
       await _registerTokenToWordPress(token: token, appState: appState);
     } on Exception catch (error, stackTrace) {
       _logger.logError('push_register_error', error, stackTrace);
+      _scheduleTokenRetry(appState);
     }
   }
 
@@ -212,9 +243,14 @@ class PushService {
         locale: Platform.localeName,
         appVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
       );
-      _logger.log('push_register_token_ok');
+      _tokenRetryTimer?.cancel();
+      _logger.log(
+        'push_register_token_ok',
+        details: <String, Object?>{'length': token.length},
+      );
     } on Exception catch (error, stackTrace) {
       _logger.logError('push_register_error', error, stackTrace);
+      _scheduleTokenRetry(appState);
     }
   }
 
@@ -259,5 +295,13 @@ class PushService {
     final String? url = message.data['url']?.toString();
     if (url == null || url.trim().isEmpty) return;
     appState.navigateFromPushPayload(url);
+  }
+
+  void _scheduleTokenRetry(AppState appState) {
+    if (_tokenRetryTimer?.isActive ?? false) return;
+    _logger.log('push_token_retry_scheduled');
+    _tokenRetryTimer = Timer(const Duration(seconds: 5), () {
+      unawaited(_registerCurrentToken(appState));
+    });
   }
 }
