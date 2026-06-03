@@ -29,14 +29,15 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.3"
+          ruby-version: "3.1"
           bundler-cache: true
 
       - name: Install iOS dependencies
         run: |
           flutter pub get
           cd ios
-          pod install
+          bundle exec pod --version
+          bundle exec pod install
 
       - name: Verify Firebase iOS config
         run: |
