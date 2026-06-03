@@ -42,20 +42,21 @@ platform :ios do
       code_sign_identity: "Apple Distribution"
     )
 
-    build_app(
-      workspace: "ios/Runner.xcworkspace",
-      scheme: "Runner",
-      clean: true,
-      export_method: "app-store",
-      export_options: {
-        provisioningProfiles: {
-          "com.praxismedia.ios" => "match AppStore com.praxismedia.ios"
-        }
-      }
+    sh(
+      "flutter",
+      "build",
+      "ipa",
+      "--release",
+      "--export-method",
+      "app-store"
     )
+
+    ipa_path = Dir["build/ios/ipa/*.ipa"].max_by { |path| File.mtime(path) }
+    UI.user_error!("No IPA found in build/ios/ipa") unless ipa_path
 
     upload_to_testflight(
       api_key: api_key,
+      ipa: ipa_path,
       skip_waiting_for_build_processing: true
     )
   end
