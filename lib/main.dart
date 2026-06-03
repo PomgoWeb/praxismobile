@@ -18,16 +18,26 @@ const Color _kBrandNavy = Color(0xFF06263F);
 const Color _kBrandLight = Color(0xFFE8EEF3);
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
   final AppLogger logger = AppLogger();
+  logger.log('main_enter');
+
+  WidgetsFlutterBinding.ensureInitialized();
+  logger.log('widgets_flutter_binding_ready');
+
+  unawaited(logger.init());
+  logger.log('logger_init_requested');
+
   final AppState appState = AppState(
     prefs: null,
     initialConnectivity: const <ConnectivityResult>[],
   );
+  logger.log('app_state_created');
   final WpApi wpApi = WpApi(logger: logger);
+  logger.log('wp_api_created');
   final PushService pushService = PushService(logger: logger, wpApi: wpApi);
+  logger.log('push_service_created');
 
+  logger.log('run_app_before');
   runApp(
     MultiProvider(
       providers: [
@@ -39,6 +49,7 @@ Future<void> main() async {
       child: const PraxisMediaApp(),
     ),
   );
+  logger.log('run_app_after');
 
   unawaited(_bootstrapApplication(logger: logger, appState: appState));
 }
@@ -51,31 +62,36 @@ Future<void> _bootstrapApplication({
   List<ConnectivityResult> initialConnectivity = const <ConnectivityResult>[];
 
   try {
+    logger.log('logger_init_wait_start');
     await logger.init().timeout(const Duration(seconds: 2));
-  } catch (_) {
-    // Logger init is non-critical for app startup.
+    logger.log('logger_init_wait_done');
+  } catch (error, stackTrace) {
+    logger.logError('logger_init_wait_failed', error, stackTrace);
   }
 
   logger.log('bootstrap_start');
 
   try {
+    logger.log('firebase_init_start');
     await Firebase.initializeApp().timeout(const Duration(seconds: 5));
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     logger.log('firebase_init_ok');
-  } on Exception catch (error, stackTrace) {
-    logger.log('firebase_init_error', error: error, stackTrace: stackTrace);
+  } catch (error, stackTrace) {
+    logger.logError('firebase_init_error', error, stackTrace);
   }
 
   try {
+    logger.log('prefs_init_start');
     prefs = await SharedPreferences.getInstance().timeout(
       const Duration(seconds: 3),
     );
     logger.log('prefs_init_ok');
-  } on Exception catch (error, stackTrace) {
-    logger.log('prefs_init_error', error: error, stackTrace: stackTrace);
+  } catch (error, stackTrace) {
+    logger.logError('prefs_init_error', error, stackTrace);
   }
 
   try {
+    logger.log('connectivity_init_start');
     initialConnectivity = await Connectivity().checkConnectivity().timeout(
       const Duration(seconds: 3),
     );
@@ -87,17 +103,19 @@ Future<void> _bootstrapApplication({
             .join(','),
       },
     );
-  } on Exception catch (error, stackTrace) {
-    logger.log('connectivity_init_error', error: error, stackTrace: stackTrace);
+  } catch (error, stackTrace) {
+    logger.logError('connectivity_init_error', error, stackTrace);
   }
 
   try {
+    logger.log('app_state_hydrate_start');
     await appState
         .hydrateFromPrefs(prefs: prefs)
         .timeout(const Duration(seconds: 2));
     appState.updateConnectivity(initialConnectivity);
-  } on Exception catch (error, stackTrace) {
-    logger.log('app_state_hydrate_error', error: error, stackTrace: stackTrace);
+    logger.log('app_state_hydrate_ok');
+  } catch (error, stackTrace) {
+    logger.logError('app_state_hydrate_error', error, stackTrace);
   } finally {
     appState.markBootstrapComplete();
     logger.log('bootstrap_ready');
@@ -107,8 +125,14 @@ Future<void> _bootstrapApplication({
 class PraxisMediaApp extends StatelessWidget {
   const PraxisMediaApp({super.key});
 
+  static bool _loggedFirstBuild = false;
+
   @override
   Widget build(BuildContext context) {
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      context.read<AppLogger>().log('app_widget_first_build');
+    }
     return MaterialApp(
       title: kAppName,
       debugShowCheckedModeBanner: false,

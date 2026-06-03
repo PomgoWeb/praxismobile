@@ -23,8 +23,8 @@
                         <constraints>
                             <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="1a2-6s-vTC"/>
                             <constraint firstItem="YRO-k0-Ey4" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="4X2-HB-R7a"/>
-                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="width" constant="56" id="E7r-58-b4L"/>
-                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="height" constant="56" id="n14-hL-3iP"/>
+                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="width" constant="88" id="E7r-58-b4L"/>
+                            <constraint firstItem="YRO-k0-Ey4" firstAttribute="height" constant="88" id="n14-hL-3iP"/>
                         </constraints>
                     </view>
                 </viewController>

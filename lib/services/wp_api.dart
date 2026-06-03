@@ -49,7 +49,7 @@ class WpApi {
         );
       }
     } on Exception catch (error, stackTrace) {
-      _logger.log('push_register_error', error: error, stackTrace: stackTrace);
+      _logger.logError('push_register_error', error, stackTrace);
     }
   }
 }

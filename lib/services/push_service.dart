@@ -46,11 +46,7 @@ class PushService {
         (String token) =>
             _registerTokenToWordPress(token: token, appState: appState),
         onError: (Object error, StackTrace stackTrace) {
-          _logger.log(
-            'push_register_error',
-            error: error,
-            stackTrace: stackTrace,
-          );
+          _logger.logError('push_register_error', error, stackTrace);
         },
       );
 
@@ -71,7 +67,7 @@ class PushService {
         _handleMessageNavigation(initialMessage, appState);
       }
     } on Exception catch (error, stackTrace) {
-      _logger.log('push_init_error', error: error, stackTrace: stackTrace);
+      _logger.logError('push_init_error', error, stackTrace);
     }
   }
 
@@ -145,7 +141,7 @@ class PushService {
       if (token == null || token.trim().isEmpty) return;
       await _registerTokenToWordPress(token: token, appState: appState);
     } on Exception catch (error, stackTrace) {
-      _logger.log('push_register_error', error: error, stackTrace: stackTrace);
+      _logger.logError('push_register_error', error, stackTrace);
     }
   }
 
@@ -163,7 +159,7 @@ class PushService {
       );
       _logger.log('push_register_token_ok');
     } on Exception catch (error, stackTrace) {
-      _logger.log('push_register_error', error: error, stackTrace: stackTrace);
+      _logger.logError('push_register_error', error, stackTrace);
     }
   }
 

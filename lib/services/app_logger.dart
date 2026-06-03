@@ -6,79 +6,53 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 class AppLogger {
+  AppLogger();
+
   static const String fileName = 'rsapp.log';
+
+  final List<String> _buffer = <String>[];
   File? _logFile;
   bool _ready = false;
+  bool _initInProgress = false;
+  bool _flushInProgress = false;
+  int _retryCount = 0;
+  Timer? _retryTimer;
 
   Future<void> init() async {
-    if (_ready) return;
-    final Directory dir = await getApplicationDocumentsDirectory();
-    _logFile = File('${dir.path}${Platform.pathSeparator}$fileName');
-    if (!await _logFile!.exists()) {
-      await _logFile!.create(recursive: true);
-    }
-    _ready = true;
-  }
-
-  Future<String> getLogFilePath() async {
-    if (!_ready) {
-      await init();
-    }
-    return _logFile?.path ?? '';
+    await _ensureReady();
   }
 
   void log(
-    String event, {
+    String message, {
     Map<String, Object?> details = const <String, Object?>{},
-    Object? error,
-    StackTrace? stackTrace,
   }) {
-    unawaited(
-      _write(event, details: details, error: error, stackTrace: stackTrace),
-    );
+    _record('INFO', message, details: details);
   }
 
-  Future<void> _write(
-    String event, {
-    required Map<String, Object?> details,
-    Object? error,
-    StackTrace? stackTrace,
-  }) async {
-    final Map<String, Object?> payload = <String, Object?>{
-      'ts': DateTime.now().toIso8601String(),
-      'event': event,
-      'details': details,
-      if (error != null) 'error': error.toString(),
-      if (stackTrace != null) 'stack': stackTrace.toString(),
-    };
-    final String line = jsonEncode(payload);
+  void logError(String scope, Object error, [StackTrace? stackTrace]) {
+    _record('ERROR', scope, error: error, stackTrace: stackTrace);
+  }
 
-    if (kDebugMode) {
-      // ignore: avoid_print
-      print(line);
-    }
-
-    if (!_ready || _logFile == null) return;
-    try {
-      await _logFile!.writeAsString(
-        '$line\n',
-        mode: FileMode.append,
-        flush: false,
-      );
-    } catch (_) {
-      // Never block app execution because of logging issues.
-    }
+  Future<String> getLogFilePath() async {
+    await _ensureReady();
+    return _logFile?.path ?? '';
   }
 
   Future<String> readContents() async {
-    if (!_ready) {
-      await init();
-    }
+    await _ensureReady();
     if (_logFile == null) return '';
 
     try {
-      return await _logFile!.readAsString();
-    } catch (_) {
+      return await _logFile!.readAsString(encoding: utf8);
+    } catch (error, stackTrace) {
+      _debugFallback(
+        _formatLine(
+          'ERROR',
+          'logger.read_contents_failed',
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
       return '';
     }
   }
@@ -95,5 +69,150 @@ class AppLogger {
       return lines.join('\n');
     }
     return lines.sublist(lines.length - maxLines).join('\n');
+  }
+
+  void _record(
+    String level,
+    String message, {
+    Map<String, Object?> details = const <String, Object?>{},
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    final String line = _formatLine(
+      level,
+      message,
+      details: details,
+      error: error,
+      stackTrace: stackTrace,
+    );
+
+    _debugFallback(line);
+
+    _buffer.add(line);
+    unawaited(_flushBuffer());
+    if (!_ready) {
+      unawaited(_ensureReady());
+    }
+  }
+
+  String _formatLine(
+    String level,
+    String message, {
+    Map<String, Object?> details = const <String, Object?>{},
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    final String timestamp = DateTime.now().toIso8601String();
+    final StringBuffer buffer = StringBuffer('$timestamp [$level] $message');
+
+    if (details.isNotEmpty) {
+      buffer.write(' details=');
+      buffer.write(jsonEncode(details));
+    }
+    if (error != null) {
+      buffer.write(' error="');
+      buffer.write(error.toString().replaceAll('"', "'"));
+      buffer.write('"');
+    }
+    if (stackTrace != null) {
+      buffer.write(' stack="');
+      buffer.write(
+        stackTrace.toString().replaceAll('"', "'").replaceAll('\n', ' | '),
+      );
+      buffer.write('"');
+    }
+
+    return buffer.toString();
+  }
+
+  Future<void> _ensureReady() async {
+    if (_ready || _initInProgress) return;
+    _initInProgress = true;
+
+    try {
+      final Directory documentsDir = await getApplicationDocumentsDirectory();
+      final Directory visibleDir = Directory(documentsDir.path);
+      if (!await visibleDir.exists()) {
+        await visibleDir.create(recursive: true);
+      }
+
+      _logFile = File('${visibleDir.path}${Platform.pathSeparator}$fileName');
+      if (!await _logFile!.exists()) {
+        await _logFile!.create(recursive: true);
+      }
+
+      _ready = true;
+      _retryCount = 0;
+      _retryTimer?.cancel();
+      _debugFallback(
+        _formatLine(
+          'INFO',
+          'logger.init_ok',
+          details: <String, Object?>{'path': _logFile!.path},
+        ),
+      );
+      await _flushBuffer();
+    } catch (error, stackTrace) {
+      _debugFallback(
+        _formatLine(
+          'ERROR',
+          'logger.init_failed',
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      _scheduleRetry();
+    } finally {
+      _initInProgress = false;
+    }
+  }
+
+  void _scheduleRetry() {
+    if (_retryTimer?.isActive ?? false) return;
+    _retryCount += 1;
+    final int delaySeconds = _retryCount < 5 ? 1 : 3;
+    _retryTimer = Timer(Duration(seconds: delaySeconds), () {
+      unawaited(_ensureReady());
+    });
+  }
+
+  Future<void> _flushBuffer() async {
+    if (!_ready || _logFile == null || _buffer.isEmpty || _flushInProgress) {
+      return;
+    }
+
+    _flushInProgress = true;
+    final List<String> pendingLines = List<String>.from(_buffer);
+    final String payload = '${pendingLines.join('\n')}\n';
+
+    try {
+      await _logFile!.writeAsString(
+        payload,
+        mode: FileMode.append,
+        encoding: utf8,
+        flush: true,
+      );
+      _buffer.removeRange(0, pendingLines.length);
+    } catch (error, stackTrace) {
+      _debugFallback(
+        _formatLine(
+          'ERROR',
+          'logger.flush_failed',
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      _ready = false;
+      _scheduleRetry();
+    } finally {
+      _flushInProgress = false;
+      if (_ready && _buffer.isNotEmpty) {
+        unawaited(_flushBuffer());
+      }
+    }
+  }
+
+  void _debugFallback(String line) {
+    debugPrint(line);
   }
 }

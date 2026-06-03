@@ -26,6 +26,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _showStartupSplash = true;
   String? _lastError;
   Timer? _startupSplashTimer;
+  bool _loggedFirstBuild = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -52,6 +53,10 @@ class _AppWebViewState extends State<AppWebView>
   Widget build(BuildContext context) {
     super.build(context);
     final AppState appState = context.watch<AppState>();
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      context.read<AppLogger>().log('webview_widget_first_build');
+    }
 
     _consumePendingNavigation(appState);
 
@@ -170,6 +175,10 @@ class _AppWebViewState extends State<AppWebView>
 
     _lastConsumedRequestId = appState.navRequestId;
     final String targetUrl = appState.requestedUrl!;
+    context.read<AppLogger>().log(
+      'webview_load_url_requested',
+      details: <String, Object?>{'url': targetUrl},
+    );
     unawaited(
       _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
     );

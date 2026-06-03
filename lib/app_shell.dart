@@ -28,11 +28,16 @@ class _AppShellState extends State<AppShell> {
   PushService? _pushService;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _pushStarted = false;
+  bool _loggedFirstBuild = false;
 
   @override
   void initState() {
     super.initState();
     _connectivity = Connectivity();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AppLogger>().log('app_shell_init_state');
+    });
     _startConnectivityListener();
   }
 
@@ -46,6 +51,10 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      context.read<AppLogger>().log('app_shell_first_build');
+    }
     _ensurePushStarted(appState);
 
     return Scaffold(
@@ -114,10 +123,11 @@ class _AppShellState extends State<AppShell> {
     final PushService pushService = _pushService!;
     final AppState appState = context.read<AppState>();
     try {
+      logger.log('push_init_start');
       await pushService.initialize(appState);
       logger.log('push_ready');
-    } on Exception catch (error, stackTrace) {
-      logger.log('push_init_error', error: error, stackTrace: stackTrace);
+    } catch (error, stackTrace) {
+      logger.logError('push_init_error', error, stackTrace);
     }
   }
 
@@ -132,10 +142,17 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _startConnectivityListener() {
+    context.read<AppLogger>().log('connectivity_listener_start');
     _connectivitySub = _connectivity.onConnectivityChanged.listen((
       List<ConnectivityResult> status,
     ) {
       if (!mounted) return;
+      context.read<AppLogger>().log(
+        'connectivity_listener_event',
+        details: <String, Object?>{
+          'status': status.map((ConnectivityResult e) => e.name).join(','),
+        },
+      );
       context.read<AppState>().updateConnectivity(status);
     });
   }

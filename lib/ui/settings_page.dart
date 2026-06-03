@@ -32,10 +32,10 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } on Exception catch (error, stackTrace) {
       if (!mounted) return;
-      context.read<AppLogger>().log(
+      context.read<AppLogger>().logError(
         'settings_package_info_error',
-        error: error,
-        stackTrace: stackTrace,
+        error,
+        stackTrace,
       );
       setState(() {
         _versionLabel = 'Indisponible';
