@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Praxis App Notifications
  * Description: Envoi de notifications sur application Android et iOS.
- * Version: 1.1.4
+ * Version: 1.1.5
  * Author: PomgoWeb
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RSAPP_PLUGIN_VERSION', '1.1.4');
+define('RSAPP_PLUGIN_VERSION', '1.1.5');
 define('RSAPP_CAPABILITY', 'edit_posts');
 define('RSAPP_QUEUE_HOOK', 'rsapp_process_queue');
 define('RSAPP_QUEUE_LOCK_KEY', 'rsapp_queue_lock');
@@ -55,7 +55,6 @@ function rsapp_create_tables()
         created_at datetime NOT NULL,
         last_seen_at datetime NOT NULL,
         PRIMARY KEY  (id),
-        UNIQUE KEY token_hash (token_hash),
         KEY platform (platform)
     ) $charset_collate;";
 
@@ -203,6 +202,14 @@ function rsapp_admin_page()
         }
     }
 
+    if (isset($_POST['rsapp_test_android'])) {
+        check_admin_referer('rsapp_test_notification');
+        $test_result = rsapp_send_test_notification('android');
+        if (is_wp_error($test_result)) {
+            $errors[] = $test_result->get_error_message();
+        }
+    }
+
     $history = rsapp_get_notification_history();
     $token_summary = rsapp_get_token_summary();
 
@@ -238,6 +245,7 @@ function rsapp_admin_page()
     wp_nonce_field('rsapp_test_notification');
     echo '<p><button type="submit" name="rsapp_test" class="button">Tester FCM (dernier token)</button></p>';
     echo '<p><button type="submit" name="rsapp_test_ios" class="button">Tester FCM (dernier token iOS)</button></p>';
+    echo '<p><button type="submit" name="rsapp_test_android" class="button">Tester FCM (dernier token Android)</button></p>';
     echo '</form>';
 
     echo '<h2>Tokens</h2>';
@@ -698,10 +706,26 @@ function rsapp_complete_queue(array $queue)
 function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, $url, array $context = [])
 {
     $token = rsapp_normalize_token($token);
+    $access_token = trim((string) $access_token);
     $endpoint = sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $project_id);
     $log_context = array_merge($context, [
         'token_hash' => rsapp_short_token_hash($token),
+        'auth_length' => strlen($access_token),
+        'auth_hash' => rsapp_short_hash($access_token),
     ]);
+
+    if ($access_token === '') {
+        rsapp_debug_log('fcm-auth-empty', $log_context);
+        return [
+            'ok' => false,
+            'code' => 0,
+            'body' => '',
+            'invalid' => false,
+            'error' => 'OAuth access token is empty before FCM request.',
+            'auth_length' => 0,
+            'auth_hash' => '',
+        ];
+    }
 
     $message = [
         'token' => $token,
@@ -772,6 +796,8 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
             'body' => '',
             'invalid' => false,
             'error' => $response->get_error_message(),
+            'auth_length' => strlen($access_token),
+            'auth_hash' => rsapp_short_hash($access_token),
         ];
     }
 
@@ -797,6 +823,8 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
             'code' => $code,
             'body' => $body,
             'invalid' => true,
+            'auth_length' => strlen($access_token),
+            'auth_hash' => rsapp_short_hash($access_token),
         ];
     }
 
@@ -806,6 +834,8 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
             'code' => $code,
             'body' => $body,
             'invalid' => false,
+            'auth_length' => strlen($access_token),
+            'auth_hash' => rsapp_short_hash($access_token),
         ];
     }
 
@@ -814,6 +844,8 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
         'code' => $code,
         'body' => $body,
         'invalid' => false,
+        'auth_length' => strlen($access_token),
+        'auth_hash' => rsapp_short_hash($access_token),
     ];
 }
 
@@ -905,10 +937,21 @@ function rsapp_get_access_token($service_account)
     $data = json_decode($body, true);
 
     if ($code !== 200 || empty($data['access_token'])) {
+        rsapp_debug_log('oauth-token-error', [
+            'code' => $code,
+            'body' => rsapp_excerpt($body, 500),
+        ]);
         return new WP_Error('rsapp_oauth_failed', 'OAuth failed: ' . $body);
     }
 
-    return $data['access_token'];
+    $access_token = trim((string) $data['access_token']);
+    rsapp_debug_log('oauth-token-ok', [
+        'code' => $code,
+        'auth_length' => strlen($access_token),
+        'auth_hash' => rsapp_short_hash($access_token),
+    ]);
+
+    return $access_token;
 }
 
 function rsapp_base64url($data)
@@ -1035,12 +1078,14 @@ function rsapp_send_test_notification($platform = '')
     }
 
     return sprintf(
-        'Test FCM: token_id=%s platform=%s app_version=%s last_seen=%s token_hash=%s code=%s body=%s',
+        'Test FCM: token_id=%s platform=%s app_version=%s last_seen=%s token_hash=%s auth_length=%s auth_hash=%s code=%s body=%s',
         (string) ($row['id'] ?? ''),
         (string) ($row['platform'] ?? ''),
         (string) ($row['app_version'] ?? ''),
         (string) ($row['last_seen_at'] ?? ''),
         rsapp_short_token_hash_from_row($row),
+        (string) ($result['auth_length'] ?? ''),
+        (string) ($result['auth_hash'] ?? ''),
         (string) ($result['code'] ?? '0'),
         rsapp_excerpt($result['body'] ?? $result['error'] ?? '', 400)
     );
@@ -1106,6 +1151,15 @@ function rsapp_token_hash($token)
         return '';
     }
     return hash('sha256', $token);
+}
+
+function rsapp_short_hash($value)
+{
+    $value = (string) $value;
+    if ($value === '') {
+        return '';
+    }
+    return substr(hash('sha256', $value), 0, 12);
 }
 
 function rsapp_excerpt($value, $max = 200)
