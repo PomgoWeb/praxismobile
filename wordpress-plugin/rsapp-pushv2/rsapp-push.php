@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Praxis App Notifications
  * Description: Envoi de notifications sur application Android et iOS.
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: PomgoWeb
  */
 
@@ -10,11 +10,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RSAPP_PLUGIN_VERSION', '1.1.2');
+define('RSAPP_PLUGIN_VERSION', '1.1.3');
 define('RSAPP_CAPABILITY', 'edit_posts');
 define('RSAPP_QUEUE_HOOK', 'rsapp_process_queue');
 define('RSAPP_QUEUE_LOCK_KEY', 'rsapp_queue_lock');
 define('RSAPP_IOS_BUNDLE_ID', 'com.praxismedia.ios');
+define('RSAPP_ANDROID_CHANNEL_ID', 'rsapp_default_channel');
 
 register_activation_hook(__FILE__, 'rsapp_activate');
 register_deactivation_hook(__FILE__, 'rsapp_deactivate');
@@ -300,20 +301,46 @@ function rsapp_register_token(WP_REST_Request $request)
         $now
     );
 
-    $wpdb->query($query);
-    $token_id = (int) $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT id FROM $table WHERE token = %s LIMIT 1",
-            $token
-        )
-    );
+    $db_result = $wpdb->query($query);
+    if ($db_result === false) {
+        $db_error = $wpdb->last_error ? $wpdb->last_error : 'Unknown database error.';
+        rsapp_debug_log('token-register-db-error', [
+            'platform' => $platform,
+            'app_version' => $app_version,
+            'token_hash' => rsapp_short_token_hash($token),
+            'db_error' => $db_error,
+        ]);
+        return new WP_Error('rsapp_token_db_error', 'Token database write failed: ' . $db_error, ['status' => 500]);
+    }
+
+    $token_id = (int) $wpdb->insert_id;
+    if ($token_id <= 0) {
+        $token_id = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM $table WHERE token = %s LIMIT 1",
+                $token
+            )
+        );
+    }
+
+    if ($token_id <= 0) {
+        $db_error = $wpdb->last_error ? $wpdb->last_error : 'Token row not found after database write.';
+        rsapp_debug_log('token-register-db-missing-row', [
+            'platform' => $platform,
+            'app_version' => $app_version,
+            'token_hash' => rsapp_short_token_hash($token),
+            'db_result' => $db_result,
+            'db_error' => $db_error,
+        ]);
+        return new WP_Error('rsapp_token_db_missing_row', 'Token database readback failed: ' . $db_error, ['status' => 500]);
+    }
 
     rsapp_debug_log('token-registered', [
         'token_id' => $token_id,
         'platform' => $platform,
         'app_version' => $app_version,
         'token_hash' => rsapp_short_token_hash($token),
-        'db_result' => $wpdb->last_error ? $wpdb->last_error : 'ok',
+        'db_result' => $db_result,
     ]);
 
     return [
@@ -612,7 +639,7 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
         ],
         'android' => [
             'notification' => [
-                'channel_id' => 'rsapp_push_channel',
+                'channel_id' => RSAPP_ANDROID_CHANNEL_ID,
                 'sound' => 'default',
                 'title' => $title,
                 'body' => $body,
