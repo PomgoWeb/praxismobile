@@ -240,12 +240,20 @@ class PushService {
   }) async {
     try {
       final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      await _wpApi.registerToken(
+      final bool registered = await _wpApi.registerToken(
         token: token,
         platform: Platform.isIOS ? 'ios' : 'android',
         locale: Platform.localeName,
         appVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
       );
+      if (!registered) {
+        _logger.log(
+          'push_register_token_failed',
+          details: <String, Object?>{'length': token.length},
+        );
+        _scheduleTokenRetry(appState);
+        return;
+      }
       _tokenRetryTimer?.cancel();
       _logger.log(
         'push_register_token_ok',

@@ -12,17 +12,28 @@ class WpApi {
 
   final AppLogger _logger;
 
-  Future<void> registerToken({
+  Future<bool> registerToken({
     required String token,
     required String platform,
     required String locale,
     required String appVersion,
   }) async {
     final String normalizedToken = token.replaceAll(RegExp(r'\s+'), '').trim();
-    if (normalizedToken.isEmpty) return;
+    if (normalizedToken.isEmpty) return false;
 
     final Uri endpoint = buildUrl(kBaseUrl, kRegisterEndpoint);
     try {
+      _logger.log(
+        'push_register_request',
+        details: <String, Object?>{
+          'endpoint': endpoint.toString(),
+          'platform': platform,
+          'locale': locale,
+          'appVersion': appVersion,
+          'tokenLength': normalizedToken.length,
+        },
+      );
+
       final http.Response response = await http
           .post(
             endpoint,
@@ -39,6 +50,17 @@ class WpApi {
           )
           .timeout(const Duration(seconds: 12));
 
+      final String bodyExcerpt = response.body.length > 500
+          ? response.body.substring(0, 500)
+          : response.body;
+      _logger.log(
+        'push_register_response',
+        details: <String, Object?>{
+          'status': response.statusCode,
+          'body': bodyExcerpt,
+        },
+      );
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _logger.log(
           'push_register_error',
@@ -47,9 +69,13 @@ class WpApi {
             'body': response.body,
           },
         );
+        return false;
       }
+
+      return true;
     } on Exception catch (error, stackTrace) {
       _logger.logError('push_register_error', error, stackTrace);
+      return false;
     }
   }
 }
