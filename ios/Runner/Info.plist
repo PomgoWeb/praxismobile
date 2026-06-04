@@ -45,6 +45,10 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>PraxisMedia utilise le micro pour des contenus multimédias lorsque nécessaire.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

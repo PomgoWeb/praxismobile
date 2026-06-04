@@ -90,18 +90,27 @@ class PushService {
       );
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-        _logger.log('push_on_message');
+        _logger.log(
+          'push_on_message',
+          details: _messageDetails(message),
+        );
         await _showForegroundNotification(message);
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        _logger.log('push_on_message_opened');
+        _logger.log(
+          'push_on_message_opened',
+          details: _messageDetails(message),
+        );
         _handleMessageNavigation(message, appState);
       });
 
       final RemoteMessage? initialMessage = await messaging.getInitialMessage();
       if (initialMessage != null) {
-        _logger.log('push_get_initial_message');
+        _logger.log(
+          'push_get_initial_message',
+          details: _messageDetails(initialMessage),
+        );
         _handleMessageNavigation(initialMessage, appState);
       }
     } on Exception catch (error, stackTrace) {
@@ -182,6 +191,12 @@ class PushService {
         badge: true,
         sound: true,
       );
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      _logger.log('push_foreground_presentation_enabled');
     } else if (Platform.isAndroid) {
       final FlutterLocalNotificationsPlugin? localNotifications =
           _ensureLocalNotifications();
@@ -306,6 +321,16 @@ class PushService {
     final String? url = message.data['url']?.toString();
     if (url == null || url.trim().isEmpty) return;
     appState.navigateFromPushPayload(url);
+  }
+
+  Map<String, Object?> _messageDetails(RemoteMessage message) {
+    return <String, Object?>{
+      'messageId': message.messageId ?? '',
+      'hasNotification': message.notification != null,
+      'title': message.notification?.title ?? '',
+      'body': message.notification?.body ?? '',
+      'dataKeys': message.data.keys.join(','),
+    };
   }
 
   void _scheduleTokenRetry(AppState appState) {
