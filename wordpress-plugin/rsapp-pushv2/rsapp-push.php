@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Praxis App Notifications
  * Description: Envoi de notifications sur application Android et iOS.
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: PomgoWeb
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RSAPP_PLUGIN_VERSION', '1.1.3');
+define('RSAPP_PLUGIN_VERSION', '1.1.4');
 define('RSAPP_CAPABILITY', 'edit_posts');
 define('RSAPP_QUEUE_HOOK', 'rsapp_process_queue');
 define('RSAPP_QUEUE_LOCK_KEY', 'rsapp_queue_lock');
@@ -48,13 +48,15 @@ function rsapp_create_tables()
     $sql_tokens = "CREATE TABLE $tokens_table (
         id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         token text NOT NULL,
+        token_hash char(64) NOT NULL DEFAULT '',
         platform varchar(20) NOT NULL DEFAULT '',
         locale varchar(20) NOT NULL DEFAULT '',
         app_version varchar(20) NOT NULL DEFAULT '',
         created_at datetime NOT NULL,
         last_seen_at datetime NOT NULL,
         PRIMARY KEY  (id),
-        UNIQUE KEY token (token(255))
+        UNIQUE KEY token_hash (token_hash),
+        KEY platform (platform)
     ) $charset_collate;";
 
     $sql_notifications = "CREATE TABLE $notifications_table (
@@ -92,6 +94,50 @@ function rsapp_create_tables()
     dbDelta($sql_tokens);
     dbDelta($sql_notifications);
     dbDelta($sql_queue);
+    rsapp_migrate_tokens_table($tokens_table);
+}
+
+function rsapp_migrate_tokens_table($tokens_table)
+{
+    global $wpdb;
+
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $tokens_table", ARRAY_A);
+    $column_names = array_map(static function ($column) {
+        return $column['Field'] ?? '';
+    }, is_array($columns) ? $columns : []);
+
+    if (!in_array('token_hash', $column_names, true)) {
+        $wpdb->query("ALTER TABLE $tokens_table ADD token_hash char(64) NOT NULL DEFAULT '' AFTER token");
+    }
+
+    $rows = $wpdb->get_results(
+        "SELECT id, token FROM $tokens_table WHERE token_hash = '' OR token_hash IS NULL",
+        ARRAY_A
+    );
+    foreach ($rows as $row) {
+        $wpdb->update(
+            $tokens_table,
+            ['token_hash' => rsapp_token_hash((string) ($row['token'] ?? ''))],
+            ['id' => (int) $row['id']],
+            ['%s'],
+            ['%d']
+        );
+    }
+
+    $indexes = $wpdb->get_results("SHOW INDEX FROM $tokens_table", ARRAY_A);
+    $index_names = [];
+    foreach (is_array($indexes) ? $indexes : [] as $index) {
+        if (!empty($index['Key_name'])) {
+            $index_names[(string) $index['Key_name']] = true;
+        }
+    }
+
+    if (isset($index_names['token'])) {
+        $wpdb->query("ALTER TABLE $tokens_table DROP INDEX token");
+    }
+    if (!isset($index_names['token_hash'])) {
+        $wpdb->query("ALTER TABLE $tokens_table ADD UNIQUE KEY token_hash (token_hash)");
+    }
 }
 
 add_action('admin_menu', 'rsapp_admin_menu');
@@ -284,16 +330,23 @@ function rsapp_register_token(WP_REST_Request $request)
     }
 
     $table = $wpdb->prefix . 'rsapp_tokens';
+    rsapp_migrate_tokens_table($table);
+
     $now = current_time('mysql', 1);
+    $token_hash = rsapp_token_hash($token);
 
     $query = $wpdb->prepare(
-        "INSERT INTO $table (token, platform, locale, app_version, created_at, last_seen_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE platform = VALUES(platform),
+        "INSERT INTO $table (token, token_hash, platform, locale, app_version, created_at, last_seen_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id),
+        token = VALUES(token),
+        token_hash = VALUES(token_hash),
+        platform = VALUES(platform),
         locale = VALUES(locale),
         app_version = VALUES(app_version),
         last_seen_at = VALUES(last_seen_at)",
         $token,
+        $token_hash,
         $platform,
         $locale,
         $app_version,
@@ -317,8 +370,8 @@ function rsapp_register_token(WP_REST_Request $request)
     if ($token_id <= 0) {
         $token_id = (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT id FROM $table WHERE token = %s LIMIT 1",
-                $token
+                "SELECT id FROM $table WHERE token_hash = %s LIMIT 1",
+                $token_hash
             )
         );
     }
@@ -333,6 +386,25 @@ function rsapp_register_token(WP_REST_Request $request)
             'db_error' => $db_error,
         ]);
         return new WP_Error('rsapp_token_db_missing_row', 'Token database readback failed: ' . $db_error, ['status' => 500]);
+    }
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT id, token_hash, platform, app_version, last_seen_at FROM $table WHERE id = %d LIMIT 1",
+            $token_id
+        ),
+        ARRAY_A
+    );
+    if (empty($row) || !hash_equals($token_hash, (string) ($row['token_hash'] ?? ''))) {
+        $db_error = 'Token row mismatch after database write.';
+        rsapp_debug_log('token-register-db-mismatch', [
+            'token_id' => $token_id,
+            'request_platform' => $platform,
+            'row_platform' => (string) ($row['platform'] ?? ''),
+            'request_token_hash' => rsapp_short_token_hash($token),
+            'row_token_hash' => substr((string) ($row['token_hash'] ?? ''), 0, 12),
+        ]);
+        return new WP_Error('rsapp_token_db_mismatch', 'Token database readback mismatch: ' . $db_error, ['status' => 500]);
     }
 
     rsapp_debug_log('token-registered', [
@@ -863,12 +935,15 @@ function rsapp_get_token_summary()
     $ios = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE platform = %s", 'ios'));
     $android = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE platform = %s", 'android'));
     $latest = $wpdb->get_results(
-        "SELECT id, token, platform, app_version, last_seen_at FROM $table ORDER BY last_seen_at DESC LIMIT 10",
+        "SELECT id, token, token_hash, platform, app_version, last_seen_at FROM $table ORDER BY last_seen_at DESC LIMIT 10",
         ARRAY_A
     );
 
     foreach ($latest as &$row) {
-        $row['token_hash'] = rsapp_short_token_hash((string) ($row['token'] ?? ''));
+        if (empty($row['token_hash'])) {
+            $row['token_hash'] = rsapp_token_hash((string) ($row['token'] ?? ''));
+        }
+        $row['token_hash'] = substr((string) $row['token_hash'], 0, 12);
         unset($row['token']);
     }
     unset($row);
@@ -908,14 +983,14 @@ function rsapp_send_test_notification($platform = '')
     if ($platform !== '') {
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table WHERE platform = %s ORDER BY last_seen_at DESC LIMIT 1",
+                "SELECT id, token, token_hash, platform, app_version, last_seen_at FROM $tokens_table WHERE platform = %s ORDER BY last_seen_at DESC LIMIT 1",
                 $platform
             ),
             ARRAY_A
         );
     } else {
         $row = $wpdb->get_row(
-            "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table ORDER BY last_seen_at DESC LIMIT 1",
+            "SELECT id, token, token_hash, platform, app_version, last_seen_at FROM $tokens_table ORDER BY last_seen_at DESC LIMIT 1",
             ARRAY_A
         );
     }
@@ -965,7 +1040,7 @@ function rsapp_send_test_notification($platform = '')
         (string) ($row['platform'] ?? ''),
         (string) ($row['app_version'] ?? ''),
         (string) ($row['last_seen_at'] ?? ''),
-        rsapp_short_token_hash((string) ($row['token'] ?? '')),
+        rsapp_short_token_hash_from_row($row),
         (string) ($result['code'] ?? '0'),
         rsapp_excerpt($result['body'] ?? $result['error'] ?? '', 400)
     );
@@ -1009,11 +1084,28 @@ function rsapp_normalize_token($token)
 
 function rsapp_short_token_hash($token)
 {
+    $hash = rsapp_token_hash($token);
+    if ($hash === '') {
+        return '';
+    }
+    return substr($hash, 0, 12);
+}
+
+function rsapp_short_token_hash_from_row(array $row)
+{
+    if (!empty($row['token_hash'])) {
+        return substr((string) $row['token_hash'], 0, 12);
+    }
+    return rsapp_short_token_hash((string) ($row['token'] ?? ''));
+}
+
+function rsapp_token_hash($token)
+{
     $token = rsapp_normalize_token($token);
     if ($token === '') {
         return '';
     }
-    return substr(hash('sha256', $token), 0, 12);
+    return hash('sha256', $token);
 }
 
 function rsapp_excerpt($value, $max = 200)
