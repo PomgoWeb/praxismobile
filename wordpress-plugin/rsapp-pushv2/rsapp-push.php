@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Praxis App Notifications
  * Description: Envoi de notifications sur application Android et iOS.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: PomgoWeb
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RSAPP_PLUGIN_VERSION', '1.1.1');
+define('RSAPP_PLUGIN_VERSION', '1.1.2');
 define('RSAPP_CAPABILITY', 'edit_posts');
 define('RSAPP_QUEUE_HOOK', 'rsapp_process_queue');
 define('RSAPP_QUEUE_LOCK_KEY', 'rsapp_queue_lock');
@@ -142,13 +142,22 @@ function rsapp_admin_page()
 
     if (isset($_POST['rsapp_test'])) {
         check_admin_referer('rsapp_test_notification');
-        $test_result = rsapp_send_test_notification();
+        $test_result = rsapp_send_test_notification('');
+        if (is_wp_error($test_result)) {
+            $errors[] = $test_result->get_error_message();
+        }
+    }
+
+    if (isset($_POST['rsapp_test_ios'])) {
+        check_admin_referer('rsapp_test_notification');
+        $test_result = rsapp_send_test_notification('ios');
         if (is_wp_error($test_result)) {
             $errors[] = $test_result->get_error_message();
         }
     }
 
     $history = rsapp_get_notification_history();
+    $token_summary = rsapp_get_token_summary();
 
     echo '<div class="wrap">';
     echo '<h1>Notifications</h1>';
@@ -181,7 +190,27 @@ function rsapp_admin_page()
     echo '<form method="post" style="margin-top:20px;">';
     wp_nonce_field('rsapp_test_notification');
     echo '<p><button type="submit" name="rsapp_test" class="button">Tester FCM (dernier token)</button></p>';
+    echo '<p><button type="submit" name="rsapp_test_ios" class="button">Tester FCM (dernier token iOS)</button></p>';
     echo '</form>';
+
+    echo '<h2>Tokens</h2>';
+    echo '<p>Total: ' . esc_html((string) $token_summary['total']) . ' | iOS: ' . esc_html((string) $token_summary['ios']) . ' | Android: ' . esc_html((string) $token_summary['android']) . '</p>';
+    if (empty($token_summary['latest'])) {
+        echo '<p>Aucun token enregistre.</p>';
+    } else {
+        echo '<table class="widefat striped">';
+        echo '<thead><tr><th>ID</th><th>Plateforme</th><th>Version</th><th>Derniere activite</th><th>Token hash</th></tr></thead><tbody>';
+        foreach ($token_summary['latest'] as $token_row) {
+            echo '<tr>';
+            echo '<td>' . esc_html((string) $token_row['id']) . '</td>';
+            echo '<td>' . esc_html((string) $token_row['platform']) . '</td>';
+            echo '<td>' . esc_html((string) $token_row['app_version']) . '</td>';
+            echo '<td>' . esc_html((string) $token_row['last_seen_at']) . '</td>';
+            echo '<td>' . esc_html((string) $token_row['token_hash']) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+    }
 
     echo '<h2>Historique</h2>';
     if (empty($history)) {
@@ -272,9 +301,26 @@ function rsapp_register_token(WP_REST_Request $request)
     );
 
     $wpdb->query($query);
+    $token_id = (int) $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM $table WHERE token = %s LIMIT 1",
+            $token
+        )
+    );
+
+    rsapp_debug_log('token-registered', [
+        'token_id' => $token_id,
+        'platform' => $platform,
+        'app_version' => $app_version,
+        'token_hash' => rsapp_short_token_hash($token),
+        'db_result' => $wpdb->last_error ? $wpdb->last_error : 'ok',
+    ]);
 
     return [
         'status' => 'ok',
+        'token_id' => $token_id,
+        'platform' => $platform,
+        'token_hash' => rsapp_short_token_hash($token),
     ];
 }
 
@@ -404,7 +450,7 @@ function rsapp_process_queue()
         $last_token_id = (int) $queue['last_token_id'];
         $tokens = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, token FROM $tokens_table WHERE id > %d ORDER BY id ASC LIMIT %d",
+                "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table WHERE id > %d ORDER BY id ASC LIMIT %d",
                 $last_token_id,
                 $batch_size
             ),
@@ -431,7 +477,13 @@ function rsapp_process_queue()
                 $row['token'],
                 $queue['title'],
                 $queue['body'],
-                $queue['url']
+                $queue['url'],
+                [
+                    'token_id' => (int) $row['id'],
+                    'platform' => (string) ($row['platform'] ?? ''),
+                    'app_version' => (string) ($row['app_version'] ?? ''),
+                    'last_seen_at' => (string) ($row['last_seen_at'] ?? ''),
+                ]
             );
 
             if (!empty($result['ok'])) {
@@ -544,10 +596,13 @@ function rsapp_complete_queue(array $queue)
     );
 }
 
-function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, $url)
+function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, $url, array $context = [])
 {
     $token = rsapp_normalize_token($token);
     $endpoint = sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $project_id);
+    $log_context = array_merge($context, [
+        'token_hash' => rsapp_short_token_hash($token),
+    ]);
 
     $message = [
         'token' => $token,
@@ -611,7 +666,7 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
         rsapp_debug_log('fcm-error', [
             'endpoint' => $endpoint,
             'error' => $response->get_error_message(),
-        ]);
+        ] + $log_context);
         return [
             'ok' => false,
             'code' => 0,
@@ -627,14 +682,14 @@ function rsapp_send_to_token($project_id, $access_token, $token, $title, $body, 
     rsapp_debug_log('fcm-response', [
         'code' => $code,
         'body' => rsapp_excerpt($body, 500),
-    ]);
+    ] + $log_context);
 
     if ($code < 200 || $code >= 300) {
         rsapp_debug_log('fcm-error', [
             'endpoint' => $endpoint,
             'code' => $code,
             'body' => $body,
-        ]);
+        ] + $log_context);
     }
 
     if (rsapp_is_invalid_token($body)) {
@@ -773,6 +828,32 @@ function rsapp_get_notification_history()
     );
 }
 
+function rsapp_get_token_summary()
+{
+    global $wpdb;
+    $table = $wpdb->prefix . 'rsapp_tokens';
+    $total = (int) $wpdb->get_var("SELECT COUNT(1) FROM $table");
+    $ios = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE platform = %s", 'ios'));
+    $android = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM $table WHERE platform = %s", 'android'));
+    $latest = $wpdb->get_results(
+        "SELECT id, token, platform, app_version, last_seen_at FROM $table ORDER BY last_seen_at DESC LIMIT 10",
+        ARRAY_A
+    );
+
+    foreach ($latest as &$row) {
+        $row['token_hash'] = rsapp_short_token_hash((string) ($row['token'] ?? ''));
+        unset($row['token']);
+    }
+    unset($row);
+
+    return [
+        'total' => $total,
+        'ios' => $ios,
+        'android' => $android,
+        'latest' => $latest,
+    ];
+}
+
 function rsapp_log_notification($title, $body, $url, $success, $failure, $last_error)
 {
     global $wpdb;
@@ -792,17 +873,29 @@ function rsapp_log_notification($title, $body, $url, $success, $failure, $last_e
     );
 }
 
-function rsapp_send_test_notification()
+function rsapp_send_test_notification($platform = '')
 {
     global $wpdb;
     $tokens_table = $wpdb->prefix . 'rsapp_tokens';
-    $row = $wpdb->get_row(
-        "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table ORDER BY last_seen_at DESC LIMIT 1",
-        ARRAY_A
-    );
+    $platform = sanitize_text_field((string) $platform);
+    if ($platform !== '') {
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table WHERE platform = %s ORDER BY last_seen_at DESC LIMIT 1",
+                $platform
+            ),
+            ARRAY_A
+        );
+    } else {
+        $row = $wpdb->get_row(
+            "SELECT id, token, platform, app_version, last_seen_at FROM $tokens_table ORDER BY last_seen_at DESC LIMIT 1",
+            ARRAY_A
+        );
+    }
 
     if (empty($row['token'])) {
-        return new WP_Error('rsapp_no_tokens', 'Aucun token enregistre pour le test.');
+        $message = $platform === '' ? 'Aucun token enregistre pour le test.' : sprintf('Aucun token %s enregistre pour le test.', $platform);
+        return new WP_Error('rsapp_no_tokens', $message);
     }
 
     $service_account = rsapp_get_service_account();
@@ -826,7 +919,13 @@ function rsapp_send_test_notification()
         $row['token'],
         'Test Praxis',
         'Notification de test.',
-        ''
+        '',
+        [
+            'token_id' => (int) ($row['id'] ?? 0),
+            'platform' => (string) ($row['platform'] ?? ''),
+            'app_version' => (string) ($row['app_version'] ?? ''),
+            'last_seen_at' => (string) ($row['last_seen_at'] ?? ''),
+        ]
     );
 
     if (!empty($result['invalid'])) {
@@ -834,11 +933,12 @@ function rsapp_send_test_notification()
     }
 
     return sprintf(
-        'Test FCM: token_id=%s platform=%s app_version=%s last_seen=%s code=%s body=%s',
+        'Test FCM: token_id=%s platform=%s app_version=%s last_seen=%s token_hash=%s code=%s body=%s',
         (string) ($row['id'] ?? ''),
         (string) ($row['platform'] ?? ''),
         (string) ($row['app_version'] ?? ''),
         (string) ($row['last_seen_at'] ?? ''),
+        rsapp_short_token_hash((string) ($row['token'] ?? '')),
         (string) ($result['code'] ?? '0'),
         rsapp_excerpt($result['body'] ?? $result['error'] ?? '', 400)
     );
@@ -878,6 +978,15 @@ function rsapp_normalize_token($token)
     $token = sanitize_text_field($token);
     $token = trim($token);
     return preg_replace('/\s+/', '', $token);
+}
+
+function rsapp_short_token_hash($token)
+{
+    $token = rsapp_normalize_token($token);
+    if ($token === '') {
+        return '';
+    }
+    return substr(hash('sha256', $token), 0, 12);
 }
 
 function rsapp_excerpt($value, $max = 200)
