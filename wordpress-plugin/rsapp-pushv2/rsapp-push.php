@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Praxis App Notifications
  * Description: Envoi de notifications sur application Android et iOS.
- * Version: 1.1.5
+ * Version: 1.1.6
  * Author: PomgoWeb
  */
 
@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RSAPP_PLUGIN_VERSION', '1.1.5');
+define('RSAPP_PLUGIN_VERSION', '1.1.6');
 define('RSAPP_CAPABILITY', 'edit_posts');
 define('RSAPP_QUEUE_HOOK', 'rsapp_process_queue');
 define('RSAPP_QUEUE_LOCK_KEY', 'rsapp_queue_lock');
@@ -225,7 +225,7 @@ function rsapp_admin_page()
         echo '<div class="notice notice-success"><p>' . esc_html($notice) . '</p></div>';
     }
     if ($test_result && !is_wp_error($test_result)) {
-        echo '<div class="notice notice-info"><p>' . esc_html($test_result) . '</p></div>';
+        echo '<div class="notice notice-info"><pre style="white-space:pre-wrap;max-height:520px;overflow:auto;">' . esc_html($test_result) . '</pre></div>';
     }
 
     echo '<form method="post">';
@@ -1087,7 +1087,7 @@ function rsapp_send_test_notification($platform = '')
         (string) ($result['auth_length'] ?? ''),
         (string) ($result['auth_hash'] ?? ''),
         (string) ($result['code'] ?? '0'),
-        rsapp_excerpt($result['body'] ?? $result['error'] ?? '', 400)
+        (string) ($result['body'] ?? $result['error'] ?? '')
     );
 }
 
