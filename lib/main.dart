@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_shell.dart';
 import 'config/app_config.dart';
+import 'firebase_options.dart';
 import 'models/app_state.dart';
 import 'services/app_logger.dart';
 import 'services/push_service.dart';
@@ -85,9 +86,17 @@ Future<void> _bootstrapApplication({
 
   try {
     logger.log('firebase_init_start');
-    await Firebase.initializeApp().timeout(const Duration(seconds: 5));
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 5));
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    logger.log('firebase_init_ok');
+    logger.log(
+      'firebase_init_ok',
+      details: <String, Object?>{
+        'projectId': DefaultFirebaseOptions.currentPlatform.projectId,
+        'appId': DefaultFirebaseOptions.currentPlatform.appId,
+      },
+    );
   } catch (error, stackTrace) {
     logger.logError('firebase_init_error', error, stackTrace);
   }

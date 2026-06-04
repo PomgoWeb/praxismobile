@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../firebase_options.dart';
 import '../models/app_state.dart';
 import 'app_logger.dart';
 import 'wp_api.dart';
@@ -13,7 +14,9 @@ import 'wp_api.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (_) {
     // Background isolate must never crash on Firebase re-init.
   }
