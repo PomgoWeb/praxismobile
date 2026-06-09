@@ -240,7 +240,15 @@ class _AppWebViewState extends State<AppWebView>
               style.id = 'rsapp-mobile-css';
               style.type = 'text/css';
               style.appendChild(document.createTextNode(
-                'html.rsapp .rsapp-hide{display:none!important;}'
+                [
+                  'html.rsapp .rsapp-hide{display:none!important;}',
+                  'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
+                  'html.rsapp .pab-vx-filters-label{display:block!important;margin:0 0 8px!important;}',
+                  'html.rsapp .pab-vx-filters{display:flex!important;flex-wrap:nowrap!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;scroll-snap-type:x proximity!important;padding:0 4px 10px!important;margin:0 -4px!important;}',
+                  'html.rsapp .pab-vx-filter-btn{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important;}',
+                  'html.rsapp .pab-vx-filters::-webkit-scrollbar{display:none!important;}',
+                  'html.rsapp .pab-vx-filters{scrollbar-width:none!important;}',
+                ].join('')
               ));
               (document.head || html || body).appendChild(style);
             }
