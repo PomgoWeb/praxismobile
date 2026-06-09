@@ -88,6 +88,7 @@ class _AppWebViewState extends State<AppWebView>
               'webview_load_start',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
             );
+            unawaited(_injectAppCssClasses(controller));
           },
           onLoadStop: (InAppWebViewController controller, WebUri? uri) {
             setState(() {
@@ -194,7 +195,7 @@ class _AppWebViewState extends State<AppWebView>
             var body = document.body;
             if (!html && !body) return;
 
-            var classes = ['rsapp', 'rsapp-hide', 'rsapp-webview'];
+            var classes = ['rsapp', 'rsapp-webview'];
             var ua = (navigator.userAgent || '').toLowerCase();
             if (ua.indexOf('android') >= 0) {
               classes.push('rsapp-android');
@@ -203,14 +204,26 @@ class _AppWebViewState extends State<AppWebView>
             }
 
             if (html) {
+              html.classList.remove('rsapp-hide');
               for (var i = 0; i < classes.length; i++) {
                 html.classList.add(classes[i]);
               }
             }
             if (body) {
+              body.classList.remove('rsapp-hide');
               for (var j = 0; j < classes.length; j++) {
                 body.classList.add(classes[j]);
               }
+            }
+
+            if (!document.getElementById('rsapp-mobile-css')) {
+              var style = document.createElement('style');
+              style.id = 'rsapp-mobile-css';
+              style.type = 'text/css';
+              style.appendChild(document.createTextNode(
+                'html.rsapp .rsapp-hide{display:none!important;}'
+              ));
+              (document.head || html || body).appendChild(style);
             }
           })();
         ''',
