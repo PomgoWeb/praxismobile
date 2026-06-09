@@ -27,18 +27,14 @@ const List<MenuDestination> kMenuDestinations = <MenuDestination>[
     icon: Icons.how_to_vote_rounded,
   ),
   MenuDestination(
-    label: 'Vidéos',
-    path: '/type/video/',
-    icon: Icons.play_circle_fill_rounded,
-  ),
-  MenuDestination(
-    label: 'Articles',
+    label: 'Média',
     path: '/articles/',
     icon: Icons.article_rounded,
   ),
+  MenuDestination(label: 'Forum', path: '/forum/', icon: Icons.forum_rounded),
   MenuDestination(
-    label: 'Podcasts',
-    path: '/podcasts/',
-    icon: Icons.podcasts_rounded,
+    label: 'Le projet',
+    path: '/le-projet/',
+    icon: Icons.info_outline_rounded,
   ),
 ];
