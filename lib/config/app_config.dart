@@ -39,6 +39,6 @@ const List<MenuDestination> kMenuDestinations = <MenuDestination>[
   MenuDestination(
     label: 'Le projet',
     path: '/le-projet/',
-    icon: Icons.info_outline_rounded,
+    icon: Icons.lightbulb_outline_rounded,
   ),
 ];
