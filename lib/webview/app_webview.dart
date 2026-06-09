@@ -253,6 +253,50 @@ class _AppWebViewState extends State<AppWebView>
               ));
               (document.head || html || body).appendChild(style);
             }
+
+            window.rsappCenterActiveFilter = function(button) {
+              var active = button || document.querySelector('.pab-vx-filter-btn.is-active');
+              if (!active) return;
+              var rail = active.closest('.pab-vx-filters');
+              if (!rail) return;
+              var target = active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2;
+              rail.scrollTo({
+                left: Math.max(0, target),
+                behavior: 'smooth'
+              });
+            };
+
+            if (!window.rsappFilterCenteringReady) {
+              window.rsappFilterCenteringReady = true;
+              document.addEventListener('click', function(event) {
+                var button = event.target && event.target.closest
+                  ? event.target.closest('.pab-vx-filter-btn')
+                  : null;
+                if (!button) return;
+                window.setTimeout(function() {
+                  window.rsappCenterActiveFilter(button);
+                }, 80);
+              }, true);
+
+              var observer = new MutationObserver(function(mutations) {
+                for (var i = 0; i < mutations.length; i++) {
+                  var target = mutations[i].target;
+                  if (target && target.classList && target.classList.contains('is-active')) {
+                    window.rsappCenterActiveFilter(target);
+                    break;
+                  }
+                }
+              });
+              observer.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['class'],
+                subtree: true
+              });
+            }
+
+            window.setTimeout(function() {
+              window.rsappCenterActiveFilter();
+            }, 120);
           })();
         ''',
       );
