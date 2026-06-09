@@ -31,7 +31,11 @@ const List<MenuDestination> kMenuDestinations = <MenuDestination>[
     path: '/articles/',
     icon: Icons.article_rounded,
   ),
-  MenuDestination(label: 'Forum', path: '/forum/', icon: Icons.forum_rounded),
+  MenuDestination(
+    label: 'Forum',
+    path: '/je-propose/',
+    icon: Icons.forum_rounded,
+  ),
   MenuDestination(
     label: 'Le projet',
     path: '/le-projet/',
