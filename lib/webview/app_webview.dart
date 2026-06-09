@@ -244,8 +244,9 @@ class _AppWebViewState extends State<AppWebView>
                   'html.rsapp .rsapp-hide{display:none!important;}',
                   'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-label{display:block!important;margin:0 0 8px!important;}',
-                  'html.rsapp .pab-vx-filters{display:flex!important;flex-wrap:nowrap!important;gap:8px!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;scroll-snap-type:x proximity!important;padding:0 4px 10px!important;margin:0 -4px!important;}',
-                  'html.rsapp .pab-vx-filter-btn{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important;}',
+                  'html.rsapp .pab-vx-filters{display:flex!important;flex-wrap:nowrap!important;gap:9px!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;scroll-snap-type:x proximity!important;padding:0 18px 12px!important;margin:0 -12px!important;}',
+                  'html.rsapp .pab-vx-filter-btn{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important;border:1.5px solid #06263F!important;border-radius:999px!important;background:#FFFFFF!important;color:#06263F!important;padding:9px 14px!important;font-weight:700!important;line-height:1!important;box-shadow:0 2px 8px rgba(6,38,63,.08)!important;}',
+                  'html.rsapp .pab-vx-filter-btn.is-active{background:#C10F00!important;border-color:#C10F00!important;color:#FFFFFF!important;box-shadow:0 3px 10px rgba(193,15,0,.22)!important;}',
                   'html.rsapp .pab-vx-filters::-webkit-scrollbar{display:none!important;}',
                   'html.rsapp .pab-vx-filters{scrollbar-width:none!important;}',
                 ].join('')
