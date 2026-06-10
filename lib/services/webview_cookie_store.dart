@@ -14,23 +14,30 @@ class WebViewCookieStore {
 
   final AppLogger logger;
 
-  Future<void> restore() async {
+  Future<WebViewCookieRestoreResult> restore() async {
     try {
       logger.log('webview_cookie_restore_start');
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? rawCookies = prefs.getString(_prefsKey);
       if (rawCookies == null || rawCookies.isEmpty) {
         logger.log('webview_cookie_restore_empty');
-        return;
+        return const WebViewCookieRestoreResult(
+          restoredCookieCount: 0,
+          restoredAuthCookieCount: 0,
+        );
       }
 
       final Object? decoded = jsonDecode(rawCookies);
       if (decoded is! List) {
         logger.log('webview_cookie_restore_invalid_payload');
-        return;
+        return const WebViewCookieRestoreResult(
+          restoredCookieCount: 0,
+          restoredAuthCookieCount: 0,
+        );
       }
 
       int restoredCount = 0;
+      int restoredAuthCount = 0;
       final CookieManager cookieManager = CookieManager.instance();
       for (final Object item in decoded) {
         if (item is! Map) continue;
@@ -48,15 +55,31 @@ class WebViewCookieStore {
           isHttpOnly: cookie.isHttpOnly,
           sameSite: cookie.sameSite,
         );
-        if (restored) restoredCount += 1;
+        if (restored) {
+          restoredCount += 1;
+          if (_isStoredWordPressAuthCookie(cookie)) {
+            restoredAuthCount += 1;
+          }
+        }
       }
 
       logger.log(
         'webview_cookie_restore_done',
-        details: <String, Object?>{'count': restoredCount},
+        details: <String, Object?>{
+          'count': restoredCount,
+          'authCookieCount': restoredAuthCount,
+        },
+      );
+      return WebViewCookieRestoreResult(
+        restoredCookieCount: restoredCount,
+        restoredAuthCookieCount: restoredAuthCount,
       );
     } catch (error, stackTrace) {
       logger.logError('webview_cookie_restore_error', error, stackTrace);
+      return const WebViewCookieRestoreResult(
+        restoredCookieCount: 0,
+        restoredAuthCookieCount: 0,
+      );
     }
   }
 
@@ -218,6 +241,18 @@ class WebViewCookiePersistResult {
   final int preservedAuthCookieCount;
 
   bool get preservedAuthCookies => preservedAuthCookieCount > 0;
+}
+
+class WebViewCookieRestoreResult {
+  const WebViewCookieRestoreResult({
+    required this.restoredCookieCount,
+    required this.restoredAuthCookieCount,
+  });
+
+  final int restoredCookieCount;
+  final int restoredAuthCookieCount;
+
+  bool get restoredAuthCookies => restoredAuthCookieCount > 0;
 }
 
 class _StoredCookie {

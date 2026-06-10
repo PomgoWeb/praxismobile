@@ -38,6 +38,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
   bool _hideWebViewDuringCookieRecovery = false;
+  bool _resumeCookieRestoreInFlight = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -78,6 +79,10 @@ class _AppWebViewState extends State<AppWebView>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_usesCookiePersistenceWorkaround) return;
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_restoreCookiesAfterResume());
+      return;
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -364,12 +369,63 @@ class _AppWebViewState extends State<AppWebView>
       const Duration(seconds: 2),
       onTimeout: () {
         logger.log('webview_cookie_restore_timeout');
+        return const WebViewCookieRestoreResult(
+          restoredCookieCount: 0,
+          restoredAuthCookieCount: 0,
+        );
       },
     );
     if (!mounted) return;
     setState(() {
       _cookiesRestored = true;
     });
+  }
+
+  Future<void> _restoreCookiesAfterResume() async {
+    if (_resumeCookieRestoreInFlight) return;
+    if (!_cookiesRestored) return;
+
+    _resumeCookieRestoreInFlight = true;
+    final AppLogger logger = context.read<AppLogger>();
+    try {
+      logger.log('webview_cookie_resume_restore_start');
+      final WebViewCookieRestoreResult result = await _cookieStore
+          .restore()
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {
+              logger.log('webview_cookie_resume_restore_timeout');
+              return const WebViewCookieRestoreResult(
+                restoredCookieCount: 0,
+                restoredAuthCookieCount: 0,
+              );
+            },
+          );
+
+      if (!mounted) return;
+      logger.log(
+        'webview_cookie_resume_restore_done',
+        details: <String, Object?>{
+          'count': result.restoredCookieCount,
+          'authCookieCount': result.restoredAuthCookieCount,
+          'reloaded': result.restoredAuthCookies && _controller != null,
+        },
+      );
+
+      if (result.restoredAuthCookies && _controller != null) {
+        await _controller!.reloadFromOrigin();
+      }
+    } catch (error, stackTrace) {
+      if (mounted) {
+        logger.logError(
+          'webview_cookie_resume_restore_error',
+          error,
+          stackTrace,
+        );
+      }
+    } finally {
+      _resumeCookieRestoreInFlight = false;
+    }
   }
 
   Future<bool> _persistCookiesAfterLoad(
