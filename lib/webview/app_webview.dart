@@ -29,6 +29,7 @@ class _AppWebViewState extends State<AppWebView>
   Timer? _startupSplashTimer;
   bool _loggedFirstBuild = false;
   bool _preloadedActionPages = false;
+  bool _paymentFlowNavigationAllowed = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -154,6 +155,9 @@ class _AppWebViewState extends State<AppWebView>
                       navigationAction.hasGesture == true ||
                       navigationAction.navigationType ==
                           NavigationType.LINK_ACTIVATED;
+                  final bool isPaymentRedirect =
+                      _isStripeCheckoutNavigation(rawUri) ||
+                      _paymentFlowNavigationAllowed;
                   context.read<AppLogger>().log(
                     'webview_external_navigation',
                     details: <String, Object?>{
@@ -162,14 +166,26 @@ class _AppWebViewState extends State<AppWebView>
                       'hasGesture': navigationAction.hasGesture,
                       'navigationType':
                           navigationAction.navigationType?.toString() ?? '',
-                      'allowed': isUserNavigation,
+                      'paymentRedirect': isPaymentRedirect,
+                      'allowed': isUserNavigation || isPaymentRedirect,
                     },
                   );
+                  if (isPaymentRedirect) {
+                    _paymentFlowNavigationAllowed = true;
+                    return NavigationActionPolicy.ALLOW;
+                  }
                   if (!isUserNavigation) {
                     return NavigationActionPolicy.CANCEL;
                   }
                   await launchUrl(rawUri, mode: LaunchMode.externalApplication);
                   return NavigationActionPolicy.CANCEL;
+                }
+                if (_paymentFlowNavigationAllowed) {
+                  _paymentFlowNavigationAllowed = false;
+                  context.read<AppLogger>().log(
+                    'webview_payment_flow_returned_to_app_domain',
+                    details: <String, Object?>{'url': rawUri.toString()},
+                  );
                 }
                 return NavigationActionPolicy.ALLOW;
               },
@@ -282,6 +298,11 @@ class _AppWebViewState extends State<AppWebView>
         stackTrace,
       );
     }
+  }
+
+  bool _isStripeCheckoutNavigation(Uri uri) {
+    final String host = uri.host.toLowerCase();
+    return uri.scheme == 'https' && host == 'checkout.stripe.com';
   }
 
   Future<void> _logCookieState() async {
