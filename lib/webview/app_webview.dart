@@ -453,7 +453,7 @@ class _AppWebViewState extends State<AppWebView>
               style.type = 'text/css';
               style.appendChild(document.createTextNode(
                 [
-                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp .mobile-toggle-wrap{display:none!important;}',
+                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
                   'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-label:not(.rsapp-hide){display:block!important;margin:0 0 8px!important;}',
                   'html.rsapp .pab-vx-filters{display:flex!important;flex-wrap:nowrap!important;gap:9px!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;scroll-snap-type:x proximity!important;padding:0 18px 12px 22px!important;margin:0!important;}',
