@@ -101,8 +101,8 @@ class _AppWebViewState extends State<AppWebView>
     return Stack(
       children: <Widget>[
         InAppWebView(
-          initialUrlRequest: URLRequest(
-            url: WebUri.uri(appState.buildPathUrl(appState.currentPath)),
+          initialUrlRequest: _buildUrlRequest(
+            appState.buildPathUrl(appState.currentPath),
           ),
           initialSettings: InAppWebViewSettings(
             userAgent: 'Mozilla/5.0 $kAppUserAgentTag',
@@ -278,9 +278,25 @@ class _AppWebViewState extends State<AppWebView>
       details: <String, Object?>{'url': targetUrl},
     );
     unawaited(
-      _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
+      _controller!.loadUrl(urlRequest: _buildUrlRequest(Uri.parse(targetUrl))),
     );
     appState.consumeNavigation(appState.navRequestId);
+  }
+
+  URLRequest _buildUrlRequest(Uri uri) {
+    return URLRequest(
+      url: WebUri.uri(uri),
+      cachePolicy: _usesCookiePersistenceWorkaround
+          ? URLRequestCachePolicy.RELOAD_REVALIDATING_CACHE_DATA
+          : URLRequestCachePolicy.USE_PROTOCOL_CACHE_POLICY,
+      headers: _usesCookiePersistenceWorkaround
+          ? const <String, String>{
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            }
+          : null,
+      httpShouldHandleCookies: true,
+    );
   }
 
   Future<void> _restoreCookiesBeforeFirstLoad() async {
@@ -322,7 +338,7 @@ class _AppWebViewState extends State<AppWebView>
       _isLoading = true;
     });
     logger.log(
-      'webview_cookie_auth_recovery_reload',
+      'webview_cookie_auth_recovery_reload_from_origin',
       details: <String, Object?>{
         'url': uri?.toString() ?? '',
         'preservedAuthCookieCount': result.preservedAuthCookieCount,
@@ -330,7 +346,7 @@ class _AppWebViewState extends State<AppWebView>
     );
 
     await _cookieStore.restore();
-    await controller.reload();
+    await controller.reloadFromOrigin();
     return true;
   }
 
@@ -339,6 +355,12 @@ class _AppWebViewState extends State<AppWebView>
     AppState appState,
   ) async {
     if (_preloadedActionPages || appState.isOffline) return;
+    if (_usesCookiePersistenceWorkaround) {
+      context.read<AppLogger>().log(
+        'webview_preload_action_pages_skipped_ios_cookie_workaround',
+      );
+      return;
+    }
     _preloadedActionPages = true;
 
     final List<String> urls = kMenuDestinations
