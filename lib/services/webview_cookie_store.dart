@@ -62,16 +62,11 @@ class WebViewCookieStore {
 
   Future<WebViewCookiePersistResult> persist({
     bool allowAuthCookieRemoval = false,
+    Uri? currentUri,
   }) async {
     try {
-      final List<Cookie> cookies = await CookieManager.instance().getCookies(
-        url: WebUri(kBaseUrl),
-      );
-      final List<_StoredCookie> currentCookies = cookies
-          .where(_isPraxisCookie)
-          .map(_StoredCookie.fromCookie)
-          .where((cookie) => !cookie.isExpired)
-          .toList(growable: false);
+      final List<_StoredCookie> currentCookies =
+          await _readCurrentPraxisCookies(currentUri);
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
@@ -117,6 +112,7 @@ class WebViewCookieStore {
           'currentCount': currentCookies.length,
           'authCookieCount': currentAuthCookieCount,
           'preservedAuthCookieCount': preservedAuthCookieCount,
+          'readUrlCount': _cookieReadTargetCount(currentUri),
           'sessionOnlyCount': cookiesToPersist
               .where((cookie) => cookie.wasSessionOnly)
               .length,
@@ -156,6 +152,41 @@ class WebViewCookieStore {
         .whereType<_StoredCookie>()
         .where((cookie) => !cookie.isExpired)
         .toList(growable: false);
+  }
+
+  Future<List<_StoredCookie>> _readCurrentPraxisCookies(Uri? currentUri) async {
+    final Uri baseUri = Uri.parse(kBaseUrl);
+    final List<Uri> targetUris = <Uri>[
+      baseUri,
+      baseUri.resolve('/wp-login.php'),
+      baseUri.resolve('/wp-admin/'),
+      if (currentUri != null && _isPraxisUri(currentUri)) currentUri,
+    ];
+
+    final Map<String, _StoredCookie> cookiesByKey = <String, _StoredCookie>{};
+    final CookieManager cookieManager = CookieManager.instance();
+    for (final Uri targetUri in targetUris) {
+      final List<Cookie> cookies = await cookieManager.getCookies(
+        url: WebUri.uri(targetUri),
+      );
+      for (final Cookie cookie in cookies.where(_isPraxisCookie)) {
+        final _StoredCookie storedCookie = _StoredCookie.fromCookie(cookie);
+        if (storedCookie.isExpired) continue;
+        cookiesByKey[storedCookie.storageKey] = storedCookie;
+      }
+    }
+
+    return cookiesByKey.values.toList(growable: false);
+  }
+
+  bool _isPraxisUri(Uri uri) {
+    final String host = uri.host.toLowerCase();
+    final String baseHost = Uri.parse(kBaseUrl).host.toLowerCase();
+    return host == baseHost || host.endsWith('.$baseHost');
+  }
+
+  int _cookieReadTargetCount(Uri? currentUri) {
+    return currentUri != null && _isPraxisUri(currentUri) ? 4 : 3;
   }
 
   bool _isPraxisCookie(Cookie cookie) {

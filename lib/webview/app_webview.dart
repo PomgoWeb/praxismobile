@@ -380,6 +380,7 @@ class _AppWebViewState extends State<AppWebView>
     final bool allowsAuthCookieRemoval = _isLogoutUrl(uri?.uriValue);
     final WebViewCookiePersistResult result = await _cookieStore.persist(
       allowAuthCookieRemoval: allowsAuthCookieRemoval,
+      currentUri: uri?.uriValue,
     );
 
     if (!mounted) return false;
