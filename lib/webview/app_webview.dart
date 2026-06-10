@@ -135,11 +135,18 @@ class _AppWebViewState extends State<AppWebView>
                 final Uri baseUri = Uri.parse(kBaseUrl);
                 final bool external = !isSameDomainOrSubdomain(baseUri, rawUri);
                 if (external) {
+                  if (!navigationAction.isForMainFrame) {
+                    context.read<AppLogger>().log(
+                      'webview_external_subframe_allowed',
+                      details: <String, Object?>{'url': rawUri.toString()},
+                    );
+                    return NavigationActionPolicy.ALLOW;
+                  }
+
                   final bool isUserNavigation =
-                      navigationAction.isForMainFrame &&
-                      (navigationAction.hasGesture == true ||
-                          navigationAction.navigationType ==
-                              NavigationType.LINK_ACTIVATED);
+                      navigationAction.hasGesture == true ||
+                      navigationAction.navigationType ==
+                          NavigationType.LINK_ACTIVATED;
                   context.read<AppLogger>().log(
                     'webview_external_navigation',
                     details: <String, Object?>{
