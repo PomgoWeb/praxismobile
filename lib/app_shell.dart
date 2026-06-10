@@ -59,6 +59,7 @@ class _AppShellState extends State<AppShell> {
       context.read<AppLogger>().log('app_shell_first_build');
     }
     _ensurePushStarted(appState);
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       appBar: AppBar(
@@ -95,27 +96,24 @@ class _AppShellState extends State<AppShell> {
             ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: const BoxDecoration(
-            color: _kActionBarBg,
-            border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
-          ),
-          child: Row(
-            children: kMenuDestinations.map((MenuDestination destination) {
-              final bool selected = appState.currentPath == destination.path;
-              return Expanded(
-                child: _ActionItem(
-                  destination: destination,
-                  selected: selected,
-                  onTap: () =>
-                      context.read<AppState>().navigateToPath(destination.path),
-                ),
-              );
-            }).toList(),
-          ),
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.fromLTRB(8, 6, 8, 6 + bottomInset),
+        decoration: const BoxDecoration(
+          color: _kActionBarBg,
+          border: Border(top: BorderSide(color: Color(0xFFD0D8DE))),
+        ),
+        child: Row(
+          children: kMenuDestinations.map((MenuDestination destination) {
+            final bool selected = appState.currentPath == destination.path;
+            return Expanded(
+              child: _ActionItem(
+                destination: destination,
+                selected: selected,
+                onTap: () =>
+                    context.read<AppState>().navigateToPath(destination.path),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );
