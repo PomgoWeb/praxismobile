@@ -60,22 +60,51 @@ class WebViewCookieStore {
     }
   }
 
-  Future<void> persist() async {
+  Future<WebViewCookiePersistResult> persist({
+    bool allowAuthCookieRemoval = false,
+  }) async {
     try {
       final List<Cookie> cookies = await CookieManager.instance().getCookies(
         url: WebUri(kBaseUrl),
       );
-      final List<_StoredCookie> storedCookies = cookies
+      final List<_StoredCookie> currentCookies = cookies
           .where(_isPraxisCookie)
           .map(_StoredCookie.fromCookie)
           .where((cookie) => !cookie.isExpired)
           .toList(growable: false);
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
+      final int currentAuthCookieCount = currentCookies
+          .where(_isStoredWordPressCookie)
+          .length;
+      final List<_StoredCookie> existingAuthCookies = existingCookies
+          .where(_isStoredWordPressCookie)
+          .where((cookie) => !cookie.isExpired)
+          .toList(growable: false);
+
+      List<_StoredCookie> cookiesToPersist = currentCookies;
+      int preservedAuthCookieCount = 0;
+
+      if (!allowAuthCookieRemoval &&
+          currentAuthCookieCount == 0 &&
+          existingAuthCookies.isNotEmpty) {
+        final Map<String, _StoredCookie> mergedCookies =
+            <String, _StoredCookie>{
+              for (final _StoredCookie cookie in currentCookies)
+                cookie.storageKey: cookie,
+            };
+        for (final _StoredCookie cookie in existingAuthCookies) {
+          mergedCookies[cookie.storageKey] = cookie;
+        }
+        cookiesToPersist = mergedCookies.values.toList(growable: false);
+        preservedAuthCookieCount = existingAuthCookies.length;
+      }
+
       await prefs.setString(
         _prefsKey,
         jsonEncode(
-          storedCookies
+          cookiesToPersist
               .map((cookie) => cookie.toJson())
               .toList(growable: false),
         ),
@@ -84,15 +113,49 @@ class WebViewCookieStore {
       logger.log(
         'webview_cookie_persist_done',
         details: <String, Object?>{
-          'count': storedCookies.length,
-          'sessionOnlyCount': storedCookies
+          'count': cookiesToPersist.length,
+          'currentCount': currentCookies.length,
+          'authCookieCount': currentAuthCookieCount,
+          'preservedAuthCookieCount': preservedAuthCookieCount,
+          'sessionOnlyCount': cookiesToPersist
               .where((cookie) => cookie.wasSessionOnly)
               .length,
         },
       );
+      return WebViewCookiePersistResult(
+        currentCookieCount: currentCookies.length,
+        currentAuthCookieCount: currentAuthCookieCount,
+        persistedCookieCount: cookiesToPersist.length,
+        preservedAuthCookieCount: preservedAuthCookieCount,
+      );
     } catch (error, stackTrace) {
       logger.logError('webview_cookie_persist_error', error, stackTrace);
+      return const WebViewCookiePersistResult(
+        currentCookieCount: 0,
+        currentAuthCookieCount: 0,
+        persistedCookieCount: 0,
+        preservedAuthCookieCount: 0,
+      );
     }
+  }
+
+  List<_StoredCookie> _loadStoredCookies(SharedPreferences prefs) {
+    final String? rawCookies = prefs.getString(_prefsKey);
+    if (rawCookies == null || rawCookies.isEmpty) {
+      return const <_StoredCookie>[];
+    }
+
+    final Object? decoded = jsonDecode(rawCookies);
+    if (decoded is! List) {
+      return const <_StoredCookie>[];
+    }
+
+    return decoded
+        .whereType<Map<dynamic, dynamic>>()
+        .map(_StoredCookie.fromJson)
+        .whereType<_StoredCookie>()
+        .where((cookie) => !cookie.isExpired)
+        .toList(growable: false);
   }
 
   bool _isPraxisCookie(Cookie cookie) {
@@ -102,6 +165,27 @@ class WebViewCookieStore {
     final String baseHost = Uri.parse(kBaseUrl).host.toLowerCase();
     return domain == baseHost || domain.endsWith('.$baseHost');
   }
+
+  bool _isStoredWordPressCookie(_StoredCookie cookie) {
+    final String name = cookie.name.toLowerCase();
+    return name.startsWith('wordpress_') || name.startsWith('wp-');
+  }
+}
+
+class WebViewCookiePersistResult {
+  const WebViewCookiePersistResult({
+    required this.currentCookieCount,
+    required this.currentAuthCookieCount,
+    required this.persistedCookieCount,
+    required this.preservedAuthCookieCount,
+  });
+
+  final int currentCookieCount;
+  final int currentAuthCookieCount;
+  final int persistedCookieCount;
+  final int preservedAuthCookieCount;
+
+  bool get preservedAuthCookies => preservedAuthCookieCount > 0;
 }
 
 class _StoredCookie {
@@ -130,6 +214,8 @@ class _StoredCookie {
   bool get isExpired => expiresDate <= DateTime.now().millisecondsSinceEpoch;
 
   int get effectiveExpiresDate => expiresDate;
+
+  String get storageKey => '${domain ?? ''}|$path|$name';
 
   factory _StoredCookie.fromCookie(Cookie cookie) {
     final bool isSessionOnly = cookie.isSessionOnly == true;

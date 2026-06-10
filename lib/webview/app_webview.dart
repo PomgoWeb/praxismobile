@@ -34,6 +34,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _preloadedActionPages = false;
   bool _paymentFlowNavigationAllowed = false;
   bool _cookiesRestored = false;
+  bool _authCookieRecoveryAttempted = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -140,7 +141,7 @@ class _AppWebViewState extends State<AppWebView>
             unawaited(_injectAppCssClasses(controller));
             unawaited(_preloadActionPages(controller, appState));
             if (_usesCookiePersistenceWorkaround) {
-              unawaited(_cookieStore.persist());
+              unawaited(_persistCookiesAfterLoad(controller, uri));
             }
             unawaited(_logCookieState());
             context.read<AppLogger>().log(
@@ -285,6 +286,34 @@ class _AppWebViewState extends State<AppWebView>
     });
   }
 
+  Future<void> _persistCookiesAfterLoad(
+    InAppWebViewController controller,
+    WebUri? uri,
+  ) async {
+    final AppLogger logger = context.read<AppLogger>();
+    final bool allowsAuthCookieRemoval = _isLogoutUrl(uri?.uriValue);
+    final WebViewCookiePersistResult result = await _cookieStore.persist(
+      allowAuthCookieRemoval: allowsAuthCookieRemoval,
+    );
+
+    if (!mounted) return;
+    if (allowsAuthCookieRemoval) return;
+    if (!result.preservedAuthCookies) return;
+    if (_authCookieRecoveryAttempted) return;
+
+    _authCookieRecoveryAttempted = true;
+    logger.log(
+      'webview_cookie_auth_recovery_reload',
+      details: <String, Object?>{
+        'url': uri?.toString() ?? '',
+        'preservedAuthCookieCount': result.preservedAuthCookieCount,
+      },
+    );
+
+    await _cookieStore.restore();
+    await controller.reload();
+  }
+
   Future<void> _preloadActionPages(
     InAppWebViewController controller,
     AppState appState,
@@ -323,14 +352,6 @@ class _AppWebViewState extends State<AppWebView>
                 link.as = 'document';
                 (document.head || document.documentElement).appendChild(link);
               } catch (_) {}
-
-              try {
-                fetch(url, {
-                  method: 'GET',
-                  credentials: 'include',
-                  cache: 'force-cache'
-                }).catch(function() {});
-              } catch (_) {}
             });
           })(${jsonEncode(urls)});
         ''',
@@ -353,6 +374,16 @@ class _AppWebViewState extends State<AppWebView>
   bool _isStripeCheckoutNavigation(Uri uri) {
     final String host = uri.host.toLowerCase();
     return uri.scheme == 'https' && host == 'checkout.stripe.com';
+  }
+
+  bool _isLogoutUrl(Uri? uri) {
+    if (uri == null) return false;
+    final String value = uri.toString().toLowerCase();
+    return value.contains('logout') ||
+        value.contains('log-out') ||
+        value.contains('deconnexion') ||
+        value.contains('d%c3%a9connexion') ||
+        value.contains('wp-login.php?action=logout');
   }
 
   Future<void> _logCookieState() async {
