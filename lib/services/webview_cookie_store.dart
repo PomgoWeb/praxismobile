@@ -76,10 +76,10 @@ class WebViewCookieStore {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
       final int currentAuthCookieCount = currentCookies
-          .where(_isStoredWordPressCookie)
+          .where(_isStoredWordPressAuthCookie)
           .length;
       final List<_StoredCookie> existingAuthCookies = existingCookies
-          .where(_isStoredWordPressCookie)
+          .where(_isStoredWordPressAuthCookie)
           .where((cookie) => !cookie.isExpired)
           .toList(growable: false);
 
@@ -166,9 +166,10 @@ class WebViewCookieStore {
     return domain == baseHost || domain.endsWith('.$baseHost');
   }
 
-  bool _isStoredWordPressCookie(_StoredCookie cookie) {
+  bool _isStoredWordPressAuthCookie(_StoredCookie cookie) {
     final String name = cookie.name.toLowerCase();
-    return name.startsWith('wordpress_') || name.startsWith('wp-');
+    return name.startsWith('wordpress_logged_in_') ||
+        name.startsWith('wordpress_sec_');
   }
 }
 

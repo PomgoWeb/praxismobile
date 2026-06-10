@@ -499,6 +499,11 @@ class _AppWebViewState extends State<AppWebView>
         return cookie.name.toLowerCase().startsWith('wordpress_') ||
             cookie.name.toLowerCase().startsWith('wp-');
       }).length;
+      final int authCookieCount = cookies.where((Cookie cookie) {
+        final String name = cookie.name.toLowerCase();
+        return name.startsWith('wordpress_logged_in_') ||
+            name.startsWith('wordpress_sec_');
+      }).length;
       final int sessionOnlyCount = cookies.where((Cookie cookie) {
         return cookie.isSessionOnly == true;
       }).length;
@@ -508,6 +513,7 @@ class _AppWebViewState extends State<AppWebView>
         details: <String, Object?>{
           'count': cookies.length,
           'wordpressCount': wordpressCookieCount,
+          'authCookieCount': authCookieCount,
           'sessionOnlyCount': sessionOnlyCount,
           'persistentCount': cookies.length - sessionOnlyCount,
         },
