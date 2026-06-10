@@ -233,6 +233,19 @@ class _AppWebViewState extends State<AppWebView>
                     details: <String, Object?>{'url': rawUri.toString()},
                   );
                 }
+                if (_shouldRevalidateInternalNavigation(
+                  navigationAction,
+                  rawUri,
+                )) {
+                  context.read<AppLogger>().log(
+                    'webview_internal_navigation_revalidated',
+                    details: <String, Object?>{'url': rawUri.toString()},
+                  );
+                  await controller.loadUrl(
+                    urlRequest: _buildUrlRequest(rawUri),
+                  );
+                  return NavigationActionPolicy.CANCEL;
+                }
                 return NavigationActionPolicy.ALLOW;
               },
         ),
@@ -297,6 +310,32 @@ class _AppWebViewState extends State<AppWebView>
           : null,
       httpShouldHandleCookies: true,
     );
+  }
+
+  bool _shouldRevalidateInternalNavigation(
+    NavigationAction navigationAction,
+    Uri uri,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!navigationAction.isForMainFrame) return false;
+
+    final String method =
+        navigationAction.request.method?.toUpperCase() ?? 'GET';
+    if (method != 'GET') return false;
+
+    final bool isUserNavigation =
+        navigationAction.hasGesture == true ||
+        navigationAction.navigationType == NavigationType.LINK_ACTIVATED;
+    if (!isUserNavigation) return false;
+
+    final Map<String, String>? headers = navigationAction.request.headers;
+    final String? cacheControl = headers?['Cache-Control'];
+    if (cacheControl?.toLowerCase().contains('no-cache') == true) {
+      return false;
+    }
+
+    final Uri baseUri = Uri.parse(kBaseUrl);
+    return isSameDomainOrSubdomain(baseUri, uri);
   }
 
   Future<void> _restoreCookiesBeforeFirstLoad() async {
