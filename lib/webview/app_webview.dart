@@ -72,6 +72,9 @@ class _AppWebViewState extends State<AppWebView>
             userAgent: 'Mozilla/5.0 $kAppUserAgentTag',
             javaScriptEnabled: true,
             useShouldOverrideUrlLoading: true,
+            incognito: false,
+            cacheEnabled: true,
+            sharedCookiesEnabled: true,
             mediaPlaybackRequiresUserGesture: false,
           ),
           onWebViewCreated: (InAppWebViewController controller) {
@@ -102,6 +105,7 @@ class _AppWebViewState extends State<AppWebView>
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
             unawaited(_preloadActionPages(controller, appState));
+            unawaited(_logCookieState());
             context.read<AppLogger>().log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
@@ -277,6 +281,37 @@ class _AppWebViewState extends State<AppWebView>
         error,
         stackTrace,
       );
+    }
+  }
+
+  Future<void> _logCookieState() async {
+    final AppLogger logger = context.read<AppLogger>();
+    try {
+      final List<Cookie> cookies = await CookieManager.instance().getCookies(
+        url: WebUri(kBaseUrl),
+      );
+      if (!mounted) return;
+
+      final int wordpressCookieCount = cookies.where((Cookie cookie) {
+        return cookie.name.toLowerCase().startsWith('wordpress_') ||
+            cookie.name.toLowerCase().startsWith('wp-');
+      }).length;
+      final int sessionOnlyCount = cookies.where((Cookie cookie) {
+        return cookie.isSessionOnly == true;
+      }).length;
+
+      logger.log(
+        'webview_cookie_state',
+        details: <String, Object?>{
+          'count': cookies.length,
+          'wordpressCount': wordpressCookieCount,
+          'sessionOnlyCount': sessionOnlyCount,
+          'persistentCount': cookies.length - sessionOnlyCount,
+        },
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      logger.logError('webview_cookie_state_error', error, stackTrace);
     }
   }
 
