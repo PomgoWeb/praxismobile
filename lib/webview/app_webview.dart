@@ -23,6 +23,8 @@ class AppWebView extends StatefulWidget {
 
 class _AppWebViewState extends State<AppWebView>
     with AutomaticKeepAliveClientMixin<AppWebView>, WidgetsBindingObserver {
+  static const String _iosNoCacheQueryKey = '_rsapp_nocache';
+
   InAppWebViewController? _controller;
   late final WebViewCookieStore _cookieStore;
   int _lastConsumedRequestId = -1;
@@ -297,8 +299,12 @@ class _AppWebViewState extends State<AppWebView>
   }
 
   URLRequest _buildUrlRequest(Uri uri) {
+    final Uri requestUri = _usesCookiePersistenceWorkaround
+        ? _withIosNoCacheQuery(uri)
+        : uri;
+
     return URLRequest(
-      url: WebUri.uri(uri),
+      url: WebUri.uri(requestUri),
       cachePolicy: _usesCookiePersistenceWorkaround
           ? URLRequestCachePolicy.RELOAD_REVALIDATING_CACHE_DATA
           : URLRequestCachePolicy.USE_PROTOCOL_CACHE_POLICY,
@@ -312,12 +318,26 @@ class _AppWebViewState extends State<AppWebView>
     );
   }
 
+  Uri _withIosNoCacheQuery(Uri uri) {
+    if (uri.queryParameters.containsKey(_iosNoCacheQueryKey)) {
+      return uri;
+    }
+
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        _iosNoCacheQueryKey: DateTime.now().millisecondsSinceEpoch.toString(),
+      },
+    );
+  }
+
   bool _shouldRevalidateInternalNavigation(
     NavigationAction navigationAction,
     Uri uri,
   ) {
     if (!_usesCookiePersistenceWorkaround) return false;
     if (!navigationAction.isForMainFrame) return false;
+    if (uri.queryParameters.containsKey(_iosNoCacheQueryKey)) return false;
 
     final String method =
         navigationAction.request.method?.toUpperCase() ?? 'GET';
