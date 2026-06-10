@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../config/app_config.dart';
 import '../models/app_state.dart';
 import '../services/app_logger.dart';
+import '../services/webview_cookie_store.dart';
 import '../ui/startup_splash.dart';
 import '../utils/url_utils.dart';
 
@@ -20,8 +22,9 @@ class AppWebView extends StatefulWidget {
 }
 
 class _AppWebViewState extends State<AppWebView>
-    with AutomaticKeepAliveClientMixin<AppWebView> {
+    with AutomaticKeepAliveClientMixin<AppWebView>, WidgetsBindingObserver {
   InAppWebViewController? _controller;
+  late final WebViewCookieStore _cookieStore;
   int _lastConsumedRequestId = -1;
   bool _isLoading = true;
   bool _showStartupSplash = true;
@@ -30,13 +33,25 @@ class _AppWebViewState extends State<AppWebView>
   bool _loggedFirstBuild = false;
   bool _preloadedActionPages = false;
   bool _paymentFlowNavigationAllowed = false;
+  bool _cookiesRestored = false;
 
   @override
   bool get wantKeepAlive => true;
 
+  bool get _usesCookiePersistenceWorkaround {
+    return defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   @override
   void initState() {
     super.initState();
+    _cookieStore = WebViewCookieStore(logger: context.read<AppLogger>());
+    if (_usesCookiePersistenceWorkaround) {
+      WidgetsBinding.instance.addObserver(this);
+      unawaited(_restoreCookiesBeforeFirstLoad());
+    } else {
+      _cookiesRestored = true;
+    }
     _startupSplashTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted) return;
       context.read<AppLogger>().log('startup_splash_timeout');
@@ -48,8 +63,22 @@ class _AppWebViewState extends State<AppWebView>
 
   @override
   void dispose() {
+    if (_usesCookiePersistenceWorkaround) {
+      WidgetsBinding.instance.removeObserver(this);
+      unawaited(_cookieStore.persist());
+    }
     _startupSplashTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_usesCookiePersistenceWorkaround) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_cookieStore.persist());
+    }
   }
 
   @override
@@ -62,6 +91,10 @@ class _AppWebViewState extends State<AppWebView>
     }
 
     _consumePendingNavigation(appState);
+
+    if (!_cookiesRestored) {
+      return const StartupSplash();
+    }
 
     return Stack(
       children: <Widget>[
@@ -106,6 +139,9 @@ class _AppWebViewState extends State<AppWebView>
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
             unawaited(_preloadActionPages(controller, appState));
+            if (_usesCookiePersistenceWorkaround) {
+              unawaited(_cookieStore.persist());
+            }
             unawaited(_logCookieState());
             context.read<AppLogger>().log(
               'webview_load_stop',
@@ -233,6 +269,20 @@ class _AppWebViewState extends State<AppWebView>
       _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
     );
     appState.consumeNavigation(appState.navRequestId);
+  }
+
+  Future<void> _restoreCookiesBeforeFirstLoad() async {
+    final AppLogger logger = context.read<AppLogger>();
+    await _cookieStore.restore().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () {
+        logger.log('webview_cookie_restore_timeout');
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _cookiesRestored = true;
+    });
   }
 
   Future<void> _preloadActionPages(
