@@ -35,6 +35,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _paymentFlowNavigationAllowed = false;
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
+  bool _hideWebViewDuringCookieRecovery = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -130,21 +131,29 @@ class _AppWebViewState extends State<AppWebView>
             );
             unawaited(_injectAppCssClasses(controller));
           },
-          onLoadStop: (InAppWebViewController controller, WebUri? uri) {
+          onLoadStop: (InAppWebViewController controller, WebUri? uri) async {
+            final AppLogger logger = context.read<AppLogger>();
             setState(() {
               _showStartupSplash = false;
-              _isLoading = false;
+              _isLoading = true;
               _lastError = null;
             });
             _startupSplashTimer?.cancel();
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
+            final bool recoveryReloaded = _usesCookiePersistenceWorkaround
+                ? await _persistCookiesAfterLoad(controller, uri)
+                : false;
+            if (recoveryReloaded) return;
+
+            if (!mounted) return;
+            setState(() {
+              _hideWebViewDuringCookieRecovery = false;
+              _isLoading = false;
+            });
             unawaited(_preloadActionPages(controller, appState));
-            if (_usesCookiePersistenceWorkaround) {
-              unawaited(_persistCookiesAfterLoad(controller, uri));
-            }
             unawaited(_logCookieState());
-            context.read<AppLogger>().log(
+            logger.log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
             );
@@ -229,6 +238,8 @@ class _AppWebViewState extends State<AppWebView>
         ),
         if (_showStartupSplash)
           const Positioned.fill(child: StartupSplash())
+        else if (_hideWebViewDuringCookieRecovery)
+          const Positioned.fill(child: StartupSplash())
         else if (_isLoading)
           const Align(
             alignment: Alignment.topCenter,
@@ -286,7 +297,7 @@ class _AppWebViewState extends State<AppWebView>
     });
   }
 
-  Future<void> _persistCookiesAfterLoad(
+  Future<bool> _persistCookiesAfterLoad(
     InAppWebViewController controller,
     WebUri? uri,
   ) async {
@@ -296,12 +307,20 @@ class _AppWebViewState extends State<AppWebView>
       allowAuthCookieRemoval: allowsAuthCookieRemoval,
     );
 
-    if (!mounted) return;
-    if (allowsAuthCookieRemoval) return;
-    if (!result.preservedAuthCookies) return;
-    if (_authCookieRecoveryAttempted) return;
+    if (!mounted) return false;
+    if (allowsAuthCookieRemoval) return false;
+    if (result.currentAuthCookieCount > 0) {
+      _authCookieRecoveryAttempted = false;
+      return false;
+    }
+    if (!result.preservedAuthCookies) return false;
+    if (_authCookieRecoveryAttempted) return false;
 
     _authCookieRecoveryAttempted = true;
+    setState(() {
+      _hideWebViewDuringCookieRecovery = true;
+      _isLoading = true;
+    });
     logger.log(
       'webview_cookie_auth_recovery_reload',
       details: <String, Object?>{
@@ -312,6 +331,7 @@ class _AppWebViewState extends State<AppWebView>
 
     await _cookieStore.restore();
     await controller.reload();
+    return true;
   }
 
   Future<void> _preloadActionPages(
