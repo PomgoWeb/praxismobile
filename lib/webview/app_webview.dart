@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -27,6 +28,7 @@ class _AppWebViewState extends State<AppWebView>
   String? _lastError;
   Timer? _startupSplashTimer;
   bool _loggedFirstBuild = false;
+  bool _preloadedActionPages = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -99,6 +101,7 @@ class _AppWebViewState extends State<AppWebView>
             _startupSplashTimer?.cancel();
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
+            unawaited(_preloadActionPages(controller, appState));
             context.read<AppLogger>().log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
@@ -210,6 +213,71 @@ class _AppWebViewState extends State<AppWebView>
       _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
     );
     appState.consumeNavigation(appState.navRequestId);
+  }
+
+  Future<void> _preloadActionPages(
+    InAppWebViewController controller,
+    AppState appState,
+  ) async {
+    if (_preloadedActionPages || appState.isOffline) return;
+    _preloadedActionPages = true;
+
+    final List<String> urls = kMenuDestinations
+        .map((MenuDestination destination) {
+          return appState.buildPathUrl(destination.path).toString();
+        })
+        .toSet()
+        .toList(growable: false);
+
+    context.read<AppLogger>().log(
+      'webview_preload_action_pages_start',
+      details: <String, Object?>{'count': urls.length},
+    );
+
+    try {
+      await controller.evaluateJavascript(
+        source:
+            '''
+          (function(urls) {
+            if (!Array.isArray(urls) || !urls.length) return;
+            window.rsappPreloadedActionPages = window.rsappPreloadedActionPages || {};
+
+            urls.forEach(function(url) {
+              if (!url || window.rsappPreloadedActionPages[url]) return;
+              window.rsappPreloadedActionPages[url] = true;
+
+              try {
+                var link = document.createElement('link');
+                link.rel = 'prefetch';
+                link.href = url;
+                link.as = 'document';
+                (document.head || document.documentElement).appendChild(link);
+              } catch (_) {}
+
+              try {
+                fetch(url, {
+                  method: 'GET',
+                  credentials: 'include',
+                  cache: 'force-cache'
+                }).catch(function() {});
+              } catch (_) {}
+            });
+          })(${jsonEncode(urls)});
+        ''',
+      );
+      if (!mounted) return;
+      context.read<AppLogger>().log(
+        'webview_preload_action_pages_done',
+        details: <String, Object?>{'count': urls.length},
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      context.read<AppLogger>().logError(
+        'webview_preload_action_pages_error',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   Future<void> _injectAppCssClasses(InAppWebViewController controller) async {
