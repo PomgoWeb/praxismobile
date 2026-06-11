@@ -40,6 +40,7 @@ class _AppWebViewState extends State<AppWebView>
   String? _initialCookieHeader;
   String? _lastAuthenticatedUrl;
   String? _pendingAppNavigationUrl;
+  String? _authHeaderNavigationUrl;
   DateTime? _lastAuthenticatedAt;
 
   @override
@@ -123,6 +124,10 @@ class _AppWebViewState extends State<AppWebView>
             cacheEnabled: true,
             sharedCookiesEnabled: true,
             mediaPlaybackRequiresUserGesture: false,
+            supportZoom: false,
+            builtInZoomControls: false,
+            displayZoomControls: false,
+            ignoresViewportScaleLimits: false,
           ),
           onWebViewCreated: (InAppWebViewController controller) {
             _controller = controller;
@@ -262,6 +267,28 @@ class _AppWebViewState extends State<AppWebView>
                   );
                   return NavigationActionPolicy.CANCEL;
                 }
+                if (_shouldAllowAuthHeaderNavigation(rawUri)) {
+                  _authHeaderNavigationUrl = null;
+                  context.read<AppLogger>().log(
+                    'webview_auth_header_navigation_allowed',
+                    details: <String, Object?>{'url': rawUri.toString()},
+                  );
+                  return NavigationActionPolicy.ALLOW;
+                }
+                if (_shouldAttachAuthHeaderToNavigation(
+                  rawUri,
+                  navigationAction,
+                )) {
+                  final bool loadedWithHeader =
+                      await _loadWithStoredAuthCookies(
+                        controller,
+                        rawUri,
+                        'same_domain',
+                      );
+                  if (loadedWithHeader) {
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                }
                 if (_shouldProtectAuthNavigation(rawUri, navigationAction)) {
                   _startAuthNavigationProtection(rawUri, 'same_domain');
                 }
@@ -314,7 +341,16 @@ class _AppWebViewState extends State<AppWebView>
       details: <String, Object?>{'url': targetUrl},
     );
     unawaited(
-      _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
+      _loadWithStoredAuthCookies(
+        _controller!,
+        Uri.parse(targetUrl),
+        'app_request',
+      ).then((bool loadedWithHeader) async {
+        if (loadedWithHeader) return;
+        await _controller!.loadUrl(
+          urlRequest: URLRequest(url: WebUri(targetUrl)),
+        );
+      }),
     );
     appState.consumeNavigation(appState.navRequestId);
   }
@@ -355,6 +391,91 @@ class _AppWebViewState extends State<AppWebView>
     if (!navigationAction.isForMainFrame) return false;
     if (_lastAuthenticatedAt == null) return false;
     if (_isLogoutUrl(uri)) return false;
+    return true;
+  }
+
+  bool _shouldAllowAuthHeaderNavigation(Uri uri) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    return _authHeaderNavigationUrl == _normalizeUrlForDuplicateGuard(uri);
+  }
+
+  bool _shouldAttachAuthHeaderToNavigation(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!navigationAction.isForMainFrame) return false;
+    if (_lastAuthenticatedAt == null) return false;
+    if (_isLogoutUrl(uri)) return false;
+
+    final String method =
+        navigationAction.request.method?.toUpperCase() ?? 'GET';
+    if (method != 'GET') return false;
+
+    return true;
+  }
+
+  Future<bool> _loadWithStoredAuthCookies(
+    InAppWebViewController controller,
+    Uri uri,
+    String source,
+  ) async {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (_isLogoutUrl(uri)) return false;
+
+    await _cookieStore.restore().timeout(
+      const Duration(seconds: 1),
+      onTimeout: () {
+        if (mounted) {
+          context.read<AppLogger>().log(
+            'webview_auth_cookie_restore_timeout',
+            details: <String, Object?>{'url': uri.toString()},
+          );
+        }
+      },
+    );
+
+    final WebViewCookieHeaderResult headerResult = await _cookieStore
+        .buildInitialCookieHeader()
+        .timeout(
+          const Duration(seconds: 1),
+          onTimeout: () {
+            if (mounted) {
+              context.read<AppLogger>().log(
+                'webview_auth_header_navigation_timeout',
+                details: <String, Object?>{'url': uri.toString()},
+              );
+            }
+            return const WebViewCookieHeaderResult();
+          },
+        );
+    if (!headerResult.hasHeader || headerResult.authCookieCount == 0) {
+      return false;
+    }
+
+    final String normalizedUrl = _normalizeUrlForDuplicateGuard(uri);
+    _authHeaderNavigationUrl = normalizedUrl;
+    _startAuthNavigationProtection(uri, source);
+    if (mounted) {
+      context.read<AppLogger>().log(
+        'webview_auth_header_navigation_start',
+        details: <String, Object?>{
+          'url': uri.toString(),
+          'source': source,
+          'cookieCount': headerResult.cookieCount,
+          'authCookieCount': headerResult.authCookieCount,
+          'headerLength': headerResult.header?.length ?? 0,
+        },
+      );
+    }
+
+    await controller.loadUrl(
+      urlRequest: URLRequest(
+        url: WebUri.uri(uri),
+        headers: <String, String>{'Cookie': headerResult.header!},
+        httpShouldHandleCookies: true,
+      ),
+    );
     return true;
   }
 
@@ -639,6 +760,7 @@ class _AppWebViewState extends State<AppWebView>
               style.type = 'text/css';
               style.appendChild(document.createTextNode(
                 [
+                  'html.rsapp,html.rsapp body{touch-action:pan-x pan-y!important;}',
                   'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
                   'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-label:not(.rsapp-hide){display:block!important;margin:0 0 8px!important;}',
@@ -650,6 +772,34 @@ class _AppWebViewState extends State<AppWebView>
                 ].join('')
               ));
               (document.head || html || body).appendChild(style);
+            }
+
+            var viewportContent = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+            var viewport = document.querySelector('meta[name="viewport"]');
+            if (!viewport) {
+              viewport = document.createElement('meta');
+              viewport.setAttribute('name', 'viewport');
+              (document.head || html || body).appendChild(viewport);
+            }
+            viewport.setAttribute('content', viewportContent);
+
+            if (!window.rsappDisableZoomReady) {
+              window.rsappDisableZoomReady = true;
+              ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(eventName) {
+                document.addEventListener(eventName, function(event) {
+                  event.preventDefault();
+                }, { passive: false });
+              });
+              document.addEventListener('touchmove', function(event) {
+                if (event.touches && event.touches.length > 1) {
+                  event.preventDefault();
+                }
+              }, { passive: false });
+              document.addEventListener('wheel', function(event) {
+                if (event.ctrlKey) {
+                  event.preventDefault();
+                }
+              }, { passive: false });
             }
 
             window.rsappCenterActiveFilter = function(button) {
