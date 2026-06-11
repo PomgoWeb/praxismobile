@@ -37,6 +37,9 @@ class _AppWebViewState extends State<AppWebView>
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
   String? _initialCookieHeader;
+  String? _lastAuthenticatedUrl;
+  String? _pendingAppNavigationUrl;
+  DateTime? _lastAuthenticatedAt;
 
   @override
   bool get wantKeepAlive => true;
@@ -126,6 +129,7 @@ class _AppWebViewState extends State<AppWebView>
             context.read<AppLogger>().log('webview_created');
           },
           onLoadStart: (InAppWebViewController controller, WebUri? uri) {
+            _clearPendingAppNavigation(uri?.uriValue);
             setState(() {
               _showStartupSplash = false;
               _isLoading = true;
@@ -240,6 +244,21 @@ class _AppWebViewState extends State<AppWebView>
                     details: <String, Object?>{'url': rawUri.toString()},
                   );
                 }
+                if (_shouldBlockAutomaticDuplicateNavigation(
+                  rawUri,
+                  navigationAction,
+                )) {
+                  context.read<AppLogger>().log(
+                    'webview_duplicate_authenticated_navigation_cancelled',
+                    details: <String, Object?>{
+                      'url': rawUri.toString(),
+                      'navigationType':
+                          navigationAction.navigationType?.toString() ?? '',
+                      'hasGesture': navigationAction.hasGesture,
+                    },
+                  );
+                  return NavigationActionPolicy.CANCEL;
+                }
                 return NavigationActionPolicy.ALLOW;
               },
         ),
@@ -280,6 +299,9 @@ class _AppWebViewState extends State<AppWebView>
 
     _lastConsumedRequestId = appState.navRequestId;
     final String targetUrl = appState.requestedUrl!;
+    _pendingAppNavigationUrl = _normalizeUrlForDuplicateGuard(
+      Uri.parse(targetUrl),
+    );
     context.read<AppLogger>().log(
       'webview_load_url_requested',
       details: <String, Object?>{'url': targetUrl},
@@ -288,6 +310,38 @@ class _AppWebViewState extends State<AppWebView>
       _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
     );
     appState.consumeNavigation(appState.navRequestId);
+  }
+
+  void _clearPendingAppNavigation(Uri? uri) {
+    if (uri == null || _pendingAppNavigationUrl == null) return;
+    if (_normalizeUrlForDuplicateGuard(uri) == _pendingAppNavigationUrl) {
+      _pendingAppNavigationUrl = null;
+    }
+  }
+
+  bool _shouldBlockAutomaticDuplicateNavigation(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!navigationAction.isForMainFrame) return false;
+    if (navigationAction.hasGesture == true) return false;
+    if (navigationAction.navigationType == NavigationType.LINK_ACTIVATED) {
+      return false;
+    }
+
+    final String normalizedUrl = _normalizeUrlForDuplicateGuard(uri);
+    if (_pendingAppNavigationUrl == normalizedUrl) return false;
+    if (_lastAuthenticatedUrl != normalizedUrl) return false;
+
+    final DateTime? lastAuthenticatedAt = _lastAuthenticatedAt;
+    if (lastAuthenticatedAt == null) return false;
+    return DateTime.now().difference(lastAuthenticatedAt) <
+        const Duration(seconds: 8);
+  }
+
+  String _normalizeUrlForDuplicateGuard(Uri uri) {
+    return uri.replace(fragment: '').toString();
   }
 
   URLRequest _buildInitialUrlRequest(Uri uri) {
@@ -355,6 +409,10 @@ class _AppWebViewState extends State<AppWebView>
     if (result.currentAuthCookieCount > 0) {
       _authCookieRecoveryAttempted = false;
       _isRecoveringAuthCookies = false;
+      if (uri?.uriValue != null) {
+        _lastAuthenticatedUrl = _normalizeUrlForDuplicateGuard(uri!.uriValue);
+        _lastAuthenticatedAt = DateTime.now();
+      }
       return false;
     }
     if (!result.preservedAuthCookies) {
