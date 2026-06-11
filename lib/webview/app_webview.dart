@@ -170,7 +170,7 @@ class _AppWebViewState extends State<AppWebView>
               _isProtectingAuthNavigation = false;
             });
             unawaited(_preloadActionPages(controller, appState));
-            unawaited(_logCookieState());
+            unawaited(_logCookieState(uri: uri?.uriValue, source: 'load_stop'));
             logger.log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
@@ -462,6 +462,13 @@ class _AppWebViewState extends State<AppWebView>
         'mainFrame': navigationAction.isForMainFrame,
       },
     );
+    unawaited(
+      _logCookieState(
+        eventName: 'webview_auth_navigation_cookie_state',
+        uri: uri,
+        source: 'navigation_diagnostic',
+      ),
+    );
   }
 
   bool _isAuthDiagnosticUrl(Uri uri) {
@@ -526,6 +533,13 @@ class _AppWebViewState extends State<AppWebView>
           'cookieCount': headerResult.cookieCount,
           'authCookieCount': headerResult.authCookieCount,
         },
+      );
+      unawaited(
+        _logCookieState(
+          eventName: 'webview_auth_cookie_pre_navigation_state',
+          uri: uri,
+          source: source,
+        ),
       );
     }
   }
@@ -724,7 +738,11 @@ class _AppWebViewState extends State<AppWebView>
     return WebViewAuthNavigationGuard.isLoginResolverUrl(uri);
   }
 
-  Future<void> _logCookieState() async {
+  Future<void> _logCookieState({
+    String eventName = 'webview_cookie_state',
+    Uri? uri,
+    String? source,
+  }) async {
     final AppLogger logger = context.read<AppLogger>();
     try {
       final List<Cookie> cookies = await CookieManager.instance().getCookies(
@@ -748,6 +766,18 @@ class _AppWebViewState extends State<AppWebView>
       final int swpmMembershipCookieCount = cookies.where((Cookie cookie) {
         return cookie.name.toLowerCase().startsWith('simple_wp_membership_');
       }).length;
+      final int swpmPrimaryMembershipCookieCount = cookies.where((
+        Cookie cookie,
+      ) {
+        final String name = cookie.name.toLowerCase();
+        return name.startsWith('simple_wp_membership_') &&
+            !name.startsWith('simple_wp_membership_sec_');
+      }).length;
+      final int swpmSecMembershipCookieCount = cookies.where((Cookie cookie) {
+        return cookie.name.toLowerCase().startsWith(
+          'simple_wp_membership_sec_',
+        );
+      }).length;
       final int swpmFlagCookieCount = cookies.where((Cookie cookie) {
         final String name = cookie.name.toLowerCase();
         return name == 'swpm_in_use' ||
@@ -757,20 +787,44 @@ class _AppWebViewState extends State<AppWebView>
       final int sessionOnlyCount = cookies.where((Cookie cookie) {
         return cookie.isSessionOnly == true;
       }).length;
+      final int secureCookieCount = cookies.where((Cookie cookie) {
+        return cookie.isSecure == true;
+      }).length;
+      final int httpOnlyCookieCount = cookies.where((Cookie cookie) {
+        return cookie.isHttpOnly == true;
+      }).length;
+      final int sameSiteLaxCookieCount = cookies.where((Cookie cookie) {
+        return cookie.sameSite == HTTPCookieSameSitePolicy.LAX;
+      }).length;
+      final int sameSiteStrictCookieCount = cookies.where((Cookie cookie) {
+        return cookie.sameSite == HTTPCookieSameSitePolicy.STRICT;
+      }).length;
+      final int sameSiteNoneCookieCount = cookies.where((Cookie cookie) {
+        return cookie.sameSite == HTTPCookieSameSitePolicy.NONE;
+      }).length;
 
       logger.log(
-        'webview_cookie_state',
+        eventName,
         details: <String, Object?>{
+          'url': ?uri?.toString(),
+          'source': ?source,
           'count': cookies.length,
           'wordpressCount': wordpressCookieCount,
           'wordpressLoggedInCount': wordpressLoggedInCookieCount,
           'wordpressSecCount': wordpressSecCookieCount,
           'swpmCount': swpmCookieCount,
           'swpmMembershipCount': swpmMembershipCookieCount,
+          'swpmPrimaryMembershipCount': swpmPrimaryMembershipCookieCount,
+          'swpmSecMembershipCount': swpmSecMembershipCookieCount,
           'swpmFlagCount': swpmFlagCookieCount,
           'authCount': wordpressCookieCount + swpmCookieCount,
           'sessionOnlyCount': sessionOnlyCount,
           'persistentCount': cookies.length - sessionOnlyCount,
+          'secureCount': secureCookieCount,
+          'httpOnlyCount': httpOnlyCookieCount,
+          'sameSiteLaxCount': sameSiteLaxCookieCount,
+          'sameSiteStrictCount': sameSiteStrictCookieCount,
+          'sameSiteNoneCount': sameSiteNoneCookieCount,
         },
       );
     } catch (error, stackTrace) {
