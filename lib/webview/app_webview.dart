@@ -13,6 +13,7 @@ import '../services/app_logger.dart';
 import '../services/webview_cookie_store.dart';
 import '../ui/startup_splash.dart';
 import '../utils/url_utils.dart';
+import '../utils/webview_auth_navigation_guard.dart';
 
 class AppWebView extends StatefulWidget {
   const AppWebView({super.key});
@@ -408,9 +409,12 @@ class _AppWebViewState extends State<AppWebView>
     NavigationAction navigationAction,
   ) {
     if (!_usesCookiePersistenceWorkaround) return false;
-    if (!_isLogoutUrl(uri)) return false;
-    if (_logoutNavigationAllowed) return false;
-    return !_isUserInitiatedNavigation(navigationAction);
+    return WebViewAuthNavigationGuard.shouldCancelAutomaticLogoutNavigation(
+      uri: uri,
+      usesCookiePersistenceWorkaround: _usesCookiePersistenceWorkaround,
+      logoutNavigationAllowed: _logoutNavigationAllowed,
+      isUserInitiated: _isUserInitiatedNavigation(navigationAction),
+    );
   }
 
   bool _shouldCancelAuthenticatedLoginResolverNavigation(
@@ -418,9 +422,12 @@ class _AppWebViewState extends State<AppWebView>
     NavigationAction navigationAction,
   ) {
     if (!_usesCookiePersistenceWorkaround) return false;
-    if (_lastAuthenticatedAt == null) return false;
-    if (!_isLoginResolverUrl(uri)) return false;
-    return !_isUserInitiatedNavigation(navigationAction);
+    return WebViewAuthNavigationGuard.shouldCancelAuthenticatedLoginResolverNavigation(
+      uri: uri,
+      usesCookiePersistenceWorkaround: _usesCookiePersistenceWorkaround,
+      hasAuthenticatedSession: _lastAuthenticatedAt != null,
+      isUserInitiated: _isUserInitiatedNavigation(navigationAction),
+    );
   }
 
   bool _shouldProtectAuthNavigation(
@@ -679,19 +686,7 @@ class _AppWebViewState extends State<AppWebView>
   }
 
   bool _isLogoutUrl(Uri? uri) {
-    if (uri == null) return false;
-    final String value = uri.toString().toLowerCase();
-    return value.contains('logout') ||
-        value.contains('logged_out') ||
-        value.contains('swpm_logged_out') ||
-        value.contains('log-out') ||
-        value.contains('deconnexion') ||
-        value.contains('d%c3%a9connexion') ||
-        value.contains('wp-login.php?action=logout');
-  }
-
-  bool _isLoginResolverUrl(Uri uri) {
-    return uri.queryParameters.containsKey('pab_ulule_login_resolve');
+    return WebViewAuthNavigationGuard.isLogoutUrl(uri);
   }
 
   Future<void> _logCookieState() async {
