@@ -48,63 +48,24 @@ void main() {
       },
     );
 
-    test('cancels automatic login resolver while already authenticated', () {
+    test('detects login resolver without treating it as logout', () {
       final Uri uri = Uri.parse(
         'https://praxismedia.fr/?pab_ulule_login_resolve=1',
       );
 
-      expect(
-        WebViewAuthNavigationGuard.shouldCancelAuthenticatedLoginResolverNavigation(
-          uri: uri,
-          usesCookiePersistenceWorkaround: true,
-          hasAuthenticatedSession: true,
-          isUserInitiated: false,
-        ),
-        isTrue,
-      );
+      expect(WebViewAuthNavigationGuard.isLoginResolverUrl(uri), isTrue);
+      expect(WebViewAuthNavigationGuard.isLogoutUrl(uri), isFalse);
     });
-
-    test(
-      'does not cancel login resolver before authenticated state is known',
-      () {
-        final Uri uri = Uri.parse(
-          'https://praxismedia.fr/?pab_ulule_login_resolve=1',
-        );
-
-        expect(
-          WebViewAuthNavigationGuard.shouldCancelAuthenticatedLoginResolverNavigation(
-            uri: uri,
-            usesCookiePersistenceWorkaround: true,
-            hasAuthenticatedSession: false,
-            isUserInitiated: false,
-          ),
-          isFalse,
-        );
-      },
-    );
 
     test('does not apply iOS workaround guards on non-iOS paths', () {
       final Uri logoutUri = Uri.parse(
         'https://praxismedia.fr/?swpm_logged_out=1%2F',
       );
-      final Uri resolverUri = Uri.parse(
-        'https://praxismedia.fr/?pab_ulule_login_resolve=1',
-      );
-
       expect(
         WebViewAuthNavigationGuard.shouldCancelAutomaticLogoutNavigation(
           uri: logoutUri,
           usesCookiePersistenceWorkaround: false,
           logoutNavigationAllowed: false,
-          isUserInitiated: false,
-        ),
-        isFalse,
-      );
-      expect(
-        WebViewAuthNavigationGuard.shouldCancelAuthenticatedLoginResolverNavigation(
-          uri: resolverUri,
-          usesCookiePersistenceWorkaround: false,
-          hasAuthenticatedSession: true,
           isUserInitiated: false,
         ),
         isFalse,

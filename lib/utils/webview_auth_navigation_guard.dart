@@ -13,18 +13,6 @@ class WebViewAuthNavigationGuard {
     return !isUserInitiated;
   }
 
-  static bool shouldCancelAuthenticatedLoginResolverNavigation({
-    required Uri uri,
-    required bool usesCookiePersistenceWorkaround,
-    required bool hasAuthenticatedSession,
-    required bool isUserInitiated,
-  }) {
-    if (!usesCookiePersistenceWorkaround) return false;
-    if (!hasAuthenticatedSession) return false;
-    if (!isLoginResolverUrl(uri)) return false;
-    return !isUserInitiated;
-  }
-
   static bool isLoginResolverUrl(Uri uri) {
     return uri.queryParameters.containsKey('pab_ulule_login_resolve');
   }

@@ -272,22 +272,6 @@ class _AppWebViewState extends State<AppWebView>
                   _logoutNavigationAllowed = true;
                   return NavigationActionPolicy.ALLOW;
                 }
-                if (_shouldCancelAuthenticatedLoginResolverNavigation(
-                  rawUri,
-                  navigationAction,
-                )) {
-                  context.read<AppLogger>().log(
-                    'webview_authenticated_login_resolver_cancelled',
-                    details: <String, Object?>{
-                      'url': rawUri.toString(),
-                      'navigationType':
-                          navigationAction.navigationType?.toString() ?? '',
-                      'hasGesture': navigationAction.hasGesture,
-                    },
-                  );
-                  unawaited(_cookieStore.restore());
-                  return NavigationActionPolicy.CANCEL;
-                }
                 if (_shouldBlockAutomaticDuplicateNavigation(
                   rawUri,
                   navigationAction,
@@ -413,19 +397,6 @@ class _AppWebViewState extends State<AppWebView>
       uri: uri,
       usesCookiePersistenceWorkaround: _usesCookiePersistenceWorkaround,
       logoutNavigationAllowed: _logoutNavigationAllowed,
-      isUserInitiated: _isUserInitiatedNavigation(navigationAction),
-    );
-  }
-
-  bool _shouldCancelAuthenticatedLoginResolverNavigation(
-    Uri uri,
-    NavigationAction navigationAction,
-  ) {
-    if (!_usesCookiePersistenceWorkaround) return false;
-    return WebViewAuthNavigationGuard.shouldCancelAuthenticatedLoginResolverNavigation(
-      uri: uri,
-      usesCookiePersistenceWorkaround: _usesCookiePersistenceWorkaround,
-      hasAuthenticatedSession: _lastAuthenticatedAt != null,
       isUserInitiated: _isUserInitiatedNavigation(navigationAction),
     );
   }
