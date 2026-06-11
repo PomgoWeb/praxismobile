@@ -33,6 +33,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _loggedFirstBuild = false;
   bool _preloadedActionPages = false;
   bool _paymentFlowNavigationAllowed = false;
+  bool _logoutNavigationAllowed = false;
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
@@ -250,6 +251,42 @@ class _AppWebViewState extends State<AppWebView>
                     details: <String, Object?>{'url': rawUri.toString()},
                   );
                 }
+                if (_shouldCancelAutomaticLogoutNavigation(
+                  rawUri,
+                  navigationAction,
+                )) {
+                  context.read<AppLogger>().log(
+                    'webview_automatic_logout_navigation_cancelled',
+                    details: <String, Object?>{
+                      'url': rawUri.toString(),
+                      'navigationType':
+                          navigationAction.navigationType?.toString() ?? '',
+                      'hasGesture': navigationAction.hasGesture,
+                    },
+                  );
+                  unawaited(_cookieStore.restore());
+                  return NavigationActionPolicy.CANCEL;
+                }
+                if (_isLogoutUrl(rawUri)) {
+                  _logoutNavigationAllowed = true;
+                  return NavigationActionPolicy.ALLOW;
+                }
+                if (_shouldCancelAuthenticatedLoginResolverNavigation(
+                  rawUri,
+                  navigationAction,
+                )) {
+                  context.read<AppLogger>().log(
+                    'webview_authenticated_login_resolver_cancelled',
+                    details: <String, Object?>{
+                      'url': rawUri.toString(),
+                      'navigationType':
+                          navigationAction.navigationType?.toString() ?? '',
+                      'hasGesture': navigationAction.hasGesture,
+                    },
+                  );
+                  unawaited(_cookieStore.restore());
+                  return NavigationActionPolicy.CANCEL;
+                }
                 if (_shouldBlockAutomaticDuplicateNavigation(
                   rawUri,
                   navigationAction,
@@ -366,6 +403,26 @@ class _AppWebViewState extends State<AppWebView>
         const Duration(seconds: 8);
   }
 
+  bool _shouldCancelAutomaticLogoutNavigation(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!_isLogoutUrl(uri)) return false;
+    if (_logoutNavigationAllowed) return false;
+    return !_isUserInitiatedNavigation(navigationAction);
+  }
+
+  bool _shouldCancelAuthenticatedLoginResolverNavigation(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (_lastAuthenticatedAt == null) return false;
+    if (!_isLoginResolverUrl(uri)) return false;
+    return !_isUserInitiatedNavigation(navigationAction);
+  }
+
   bool _shouldProtectAuthNavigation(
     Uri uri,
     NavigationAction navigationAction,
@@ -375,6 +432,11 @@ class _AppWebViewState extends State<AppWebView>
     if (_lastAuthenticatedAt == null) return false;
     if (_isLogoutUrl(uri)) return false;
     return true;
+  }
+
+  bool _isUserInitiatedNavigation(NavigationAction navigationAction) {
+    return navigationAction.hasGesture == true ||
+        navigationAction.navigationType == NavigationType.LINK_ACTIVATED;
   }
 
   bool _shouldRestoreAuthCookiesBeforeNavigation(
@@ -507,6 +569,7 @@ class _AppWebViewState extends State<AppWebView>
 
     if (!mounted) return false;
     if (allowsAuthCookieRemoval) {
+      _logoutNavigationAllowed = false;
       _isRecoveringAuthCookies = false;
       _isProtectingAuthNavigation = false;
       return false;
@@ -625,6 +688,10 @@ class _AppWebViewState extends State<AppWebView>
         value.contains('deconnexion') ||
         value.contains('d%c3%a9connexion') ||
         value.contains('wp-login.php?action=logout');
+  }
+
+  bool _isLoginResolverUrl(Uri uri) {
+    return uri.queryParameters.containsKey('pab_ulule_login_resolve');
   }
 
   Future<void> _logCookieState() async {
