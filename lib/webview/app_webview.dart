@@ -39,9 +39,14 @@ class _AppWebViewState extends State<AppWebView>
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
   bool _isProtectingAuthNavigation = false;
+  bool _isRepairingAutomaticLogout = false;
+  bool _suppressNextCancelledNavigationError = false;
   String? _lastAuthenticatedUrl;
+  String? _lastMainFrameRequestedUrl;
   String? _pendingAppNavigationUrl;
+  String? _lastAutomaticLogoutRepairUrl;
   DateTime? _lastAuthenticatedAt;
+  DateTime? _lastAutomaticLogoutRepairAt;
 
   @override
   bool get wantKeepAlive => true;
@@ -135,6 +140,10 @@ class _AppWebViewState extends State<AppWebView>
             context.read<AppLogger>().log('webview_created');
           },
           onLoadStart: (InAppWebViewController controller, WebUri? uri) {
+            final Uri? startedUri = uri?.uriValue;
+            if (startedUri != null && !_isLogoutUrl(startedUri)) {
+              _lastMainFrameRequestedUrl = startedUri.toString();
+            }
             _clearPendingAppNavigation(uri?.uriValue);
             setState(() {
               _showStartupSplash = false;
@@ -182,6 +191,19 @@ class _AppWebViewState extends State<AppWebView>
                 WebResourceRequest request,
                 WebResourceError error,
               ) {
+                if (_shouldSuppressCancelledNavigationError(error)) {
+                  _suppressNextCancelledNavigationError = false;
+                  context.read<AppLogger>().log(
+                    'webview_cancelled_navigation_error_suppressed',
+                    details: <String, Object?>{
+                      'url': request.url.toString(),
+                      'code': error.type.toString(),
+                      'description': error.description,
+                    },
+                  );
+                  return;
+                }
+                _suppressNextCancelledNavigationError = false;
                 setState(() {
                   _showStartupSplash = false;
                   _isLoading = false;
@@ -259,16 +281,29 @@ class _AppWebViewState extends State<AppWebView>
                   rawUri,
                   navigationAction,
                 )) {
+                  final String retryUrl = _resolveAutomaticLogoutRetryUrl();
                   context.read<AppLogger>().log(
                     'webview_automatic_logout_navigation_cancelled',
                     details: <String, Object?>{
                       'url': rawUri.toString(),
+                      'retryUrl': retryUrl,
                       'navigationType':
                           navigationAction.navigationType?.toString() ?? '',
                       'hasGesture': navigationAction.hasGesture,
                     },
                   );
-                  unawaited(_cookieStore.restore());
+                  _suppressNextCancelledNavigationError = true;
+                  if (_shouldAttemptAutomaticLogoutRepair(retryUrl)) {
+                    unawaited(
+                      _repairAutomaticLogoutNavigation(controller, retryUrl),
+                    );
+                  } else {
+                    context.read<AppLogger>().log(
+                      'webview_swpm_cookie_repair_skipped',
+                      details: <String, Object?>{'retryUrl': retryUrl},
+                    );
+                    unawaited(_cookieStore.restore());
+                  }
                   return NavigationActionPolicy.CANCEL;
                 }
                 if (_isLogoutUrl(rawUri)) {
@@ -426,6 +461,109 @@ class _AppWebViewState extends State<AppWebView>
       logoutNavigationAllowed: _logoutNavigationAllowed,
       isUserInitiated: _isUserInitiatedNavigation(navigationAction),
     );
+  }
+
+  String _resolveAutomaticLogoutRetryUrl() {
+    return _lastMainFrameRequestedUrl ??
+        _pendingAppNavigationUrl ??
+        _lastAuthenticatedUrl ??
+        kBaseUrl;
+  }
+
+  bool _shouldAttemptAutomaticLogoutRepair(String retryUrl) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (_isRepairingAutomaticLogout) return false;
+
+    final Uri? retryUri = Uri.tryParse(retryUrl);
+    if (_isLogoutUrl(retryUri)) return false;
+
+    final DateTime? lastRepairAt = _lastAutomaticLogoutRepairAt;
+    if (_lastAutomaticLogoutRepairUrl == retryUrl && lastRepairAt != null) {
+      return DateTime.now().difference(lastRepairAt) >
+          const Duration(seconds: 20);
+    }
+
+    return true;
+  }
+
+  Future<void> _repairAutomaticLogoutNavigation(
+    InAppWebViewController controller,
+    String retryUrl,
+  ) async {
+    final AppLogger logger = context.read<AppLogger>();
+    _isRepairingAutomaticLogout = true;
+    _lastAutomaticLogoutRepairUrl = retryUrl;
+    _lastAutomaticLogoutRepairAt = DateTime.now();
+
+    if (mounted) {
+      setState(() {
+        _isProtectingAuthNavigation = true;
+        _isLoading = true;
+      });
+    }
+
+    logger.log(
+      'webview_swpm_cookie_repair_start',
+      details: <String, Object?>{'retryUrl': retryUrl},
+    );
+
+    try {
+      final WebViewCookieClearSwpmResult clearResult = await _cookieStore
+          .clearSwpmCookies()
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {
+              logger.log(
+                'webview_swpm_cookie_repair_clear_timeout',
+                details: <String, Object?>{'retryUrl': retryUrl},
+              );
+              return const WebViewCookieClearSwpmResult();
+            },
+          );
+
+      await _cookieStore.restore().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          logger.log(
+            'webview_swpm_cookie_repair_restore_timeout',
+            details: <String, Object?>{'retryUrl': retryUrl},
+          );
+        },
+      );
+
+      logger.log(
+        'webview_swpm_logout_retry_start',
+        details: <String, Object?>{
+          'url': retryUrl,
+          'runtimeSwpmCookieCount': clearResult.runtimeSwpmCookieCount,
+          'deletedRuntimeCookieCount': clearResult.deletedRuntimeCookieCount,
+          'removedStoredCookieCount': clearResult.removedStoredCookieCount,
+          'remainingStoredCookieCount': clearResult.remainingStoredCookieCount,
+          'remainingWordPressCookieCount':
+              clearResult.remainingWordPressCookieCount,
+        },
+      );
+
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(retryUrl)));
+    } catch (error, stackTrace) {
+      logger.logError('webview_swpm_logout_retry_error', error, stackTrace);
+      if (!mounted) return;
+      setState(() {
+        _isProtectingAuthNavigation = false;
+        _isLoading = false;
+      });
+    } finally {
+      _isRepairingAutomaticLogout = false;
+    }
+  }
+
+  bool _shouldSuppressCancelledNavigationError(WebResourceError error) {
+    if (!_suppressNextCancelledNavigationError) return false;
+    final String description = error.description.toLowerCase();
+    return description.contains('webkiterrordomain') &&
+        (description.contains('code=102') ||
+            description.contains('frame load interrupted') ||
+            description.contains('chargement du cadre interrompu'));
   }
 
   bool _shouldProtectAuthNavigation(

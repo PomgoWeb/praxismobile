@@ -206,6 +206,97 @@ class WebViewCookieStore {
     }
   }
 
+  Future<WebViewCookieClearSwpmResult> clearSwpmCookies() async {
+    try {
+      final CookieManager cookieManager = CookieManager.instance();
+      final List<Cookie> currentCookies = await cookieManager.getCookies(
+        url: WebUri(kBaseUrl),
+      );
+      final List<Cookie> currentSwpmCookies = currentCookies
+          .where((Cookie cookie) => _isSwpmCookieName(cookie.name))
+          .toList(growable: false);
+
+      int deletedRuntimeCookieCount = 0;
+      for (final Cookie cookie in currentSwpmCookies) {
+        final bool deleted = await _deleteRuntimeCookie(cookieManager, cookie);
+        if (deleted) deletedRuntimeCookieCount += 1;
+      }
+
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
+      final List<_StoredCookie> remainingCookies = existingCookies
+          .where((cookie) => !_isStoredSwpmCookie(cookie))
+          .toList(growable: false);
+      final int removedStoredCookieCount =
+          existingCookies.length - remainingCookies.length;
+
+      await prefs.setString(
+        _prefsKey,
+        jsonEncode(
+          remainingCookies
+              .map((cookie) => cookie.toJson())
+              .toList(growable: false),
+        ),
+      );
+
+      final int remainingWordPressCookieCount = remainingCookies
+          .where(_isStoredWordPressCookie)
+          .length;
+
+      logger.log(
+        'webview_swpm_cookie_clear_done',
+        details: <String, Object?>{
+          'runtimeSwpmCookieCount': currentSwpmCookies.length,
+          'deletedRuntimeCookieCount': deletedRuntimeCookieCount,
+          'removedStoredCookieCount': removedStoredCookieCount,
+          'remainingStoredCookieCount': remainingCookies.length,
+          'remainingWordPressCookieCount': remainingWordPressCookieCount,
+        },
+      );
+
+      return WebViewCookieClearSwpmResult(
+        runtimeSwpmCookieCount: currentSwpmCookies.length,
+        deletedRuntimeCookieCount: deletedRuntimeCookieCount,
+        removedStoredCookieCount: removedStoredCookieCount,
+        remainingStoredCookieCount: remainingCookies.length,
+        remainingWordPressCookieCount: remainingWordPressCookieCount,
+      );
+    } catch (error, stackTrace) {
+      logger.logError('webview_swpm_cookie_clear_error', error, stackTrace);
+      return const WebViewCookieClearSwpmResult();
+    }
+  }
+
+  Future<bool> _deleteRuntimeCookie(
+    CookieManager cookieManager,
+    Cookie cookie,
+  ) async {
+    final Set<String?> domains = <String?>{
+      cookie.domain,
+      cookie.domain?.replaceFirst(RegExp(r'^\.'), ''),
+      '.${Uri.parse(kBaseUrl).host}',
+      Uri.parse(kBaseUrl).host,
+      null,
+    };
+    final String path = cookie.path?.isNotEmpty == true ? cookie.path! : '/';
+
+    bool deleted = false;
+    for (final String? domain in domains) {
+      try {
+        final bool result = await cookieManager.deleteCookie(
+          url: WebUri(kBaseUrl),
+          name: cookie.name,
+          path: path,
+          domain: domain,
+        );
+        deleted = deleted || result;
+      } catch (_) {
+        // Try all domain variants; one failed variant must not block repair.
+      }
+    }
+    return deleted;
+  }
+
   List<_StoredCookie> _loadStoredCookies(SharedPreferences prefs) {
     final String? rawCookies = prefs.getString(_prefsKey);
     if (rawCookies == null || rawCookies.isEmpty) {
@@ -249,6 +340,14 @@ class WebViewCookieStore {
   bool _isStoredSwpmCookie(_StoredCookie cookie) {
     return _isStoredSwpmMembershipCookie(cookie) ||
         _isStoredSwpmFlagCookie(cookie);
+  }
+
+  bool _isSwpmCookieName(String name) {
+    final String lowerName = name.toLowerCase();
+    return lowerName.startsWith('simple_wp_membership_') ||
+        lowerName == 'swpm_in_use' ||
+        lowerName == 'wp_swpm_in_use' ||
+        lowerName == 'swpm_session';
   }
 
   bool _isStoredSwpmMembershipCookie(_StoredCookie cookie) {
@@ -295,6 +394,22 @@ class WebViewCookiePersistResult {
   final int preservedAuthCookieCount;
 
   bool get preservedAuthCookies => preservedAuthCookieCount > 0;
+}
+
+class WebViewCookieClearSwpmResult {
+  const WebViewCookieClearSwpmResult({
+    this.runtimeSwpmCookieCount = 0,
+    this.deletedRuntimeCookieCount = 0,
+    this.removedStoredCookieCount = 0,
+    this.remainingStoredCookieCount = 0,
+    this.remainingWordPressCookieCount = 0,
+  });
+
+  final int runtimeSwpmCookieCount;
+  final int deletedRuntimeCookieCount;
+  final int removedStoredCookieCount;
+  final int remainingStoredCookieCount;
+  final int remainingWordPressCookieCount;
 }
 
 class _StoredCookie {
