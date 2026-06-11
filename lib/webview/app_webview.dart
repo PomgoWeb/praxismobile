@@ -406,16 +406,14 @@ class _AppWebViewState extends State<AppWebView>
       _isRecoveringAuthCookies = false;
       return false;
     }
-    if (result.currentAuthCookieCount > 0) {
-      _authCookieRecoveryAttempted = false;
-      _isRecoveringAuthCookies = false;
-      if (uri?.uriValue != null) {
-        _lastAuthenticatedUrl = _normalizeUrlForDuplicateGuard(uri!.uriValue);
-        _lastAuthenticatedAt = DateTime.now();
-      }
-      return false;
-    }
     if (!result.preservedAuthCookies) {
+      if (result.currentAuthCookieCount > 0) {
+        _authCookieRecoveryAttempted = false;
+        if (uri?.uriValue != null) {
+          _lastAuthenticatedUrl = _normalizeUrlForDuplicateGuard(uri!.uriValue);
+          _lastAuthenticatedAt = DateTime.now();
+        }
+      }
       _isRecoveringAuthCookies = false;
       return false;
     }

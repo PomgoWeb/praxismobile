@@ -97,30 +97,53 @@ class WebViewCookieStore {
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
-      final int currentAuthCookieCount = currentCookies
-          .where(_isStoredAuthCookie)
-          .length;
-      final List<_StoredCookie> existingAuthCookies = existingCookies
-          .where(_isStoredAuthCookie)
+      final List<_StoredCookie> currentWordPressCookies = currentCookies
+          .where(_isStoredWordPressCookie)
+          .toList(growable: false);
+      final List<_StoredCookie> currentSwpmCookies = currentCookies
+          .where(_isStoredSwpmCookie)
+          .toList(growable: false);
+      final int currentAuthCookieCount =
+          currentWordPressCookies.length + currentSwpmCookies.length;
+      final List<_StoredCookie> existingWordPressCookies = existingCookies
+          .where(_isStoredWordPressCookie)
+          .where((cookie) => !cookie.isExpired)
+          .toList(growable: false);
+      final List<_StoredCookie> existingSwpmCookies = existingCookies
+          .where(_isStoredSwpmCookie)
           .where((cookie) => !cookie.isExpired)
           .toList(growable: false);
 
       List<_StoredCookie> cookiesToPersist = currentCookies;
       int preservedAuthCookieCount = 0;
+      int preservedWordPressCookieCount = 0;
+      int preservedSwpmCookieCount = 0;
 
-      if (!allowAuthCookieRemoval &&
-          currentAuthCookieCount == 0 &&
-          existingAuthCookies.isNotEmpty) {
+      if (!allowAuthCookieRemoval) {
         final Map<String, _StoredCookie> mergedCookies =
             <String, _StoredCookie>{
               for (final _StoredCookie cookie in currentCookies)
                 cookie.storageKey: cookie,
             };
-        for (final _StoredCookie cookie in existingAuthCookies) {
-          mergedCookies[cookie.storageKey] = cookie;
+
+        if (currentWordPressCookies.isEmpty &&
+            existingWordPressCookies.isNotEmpty) {
+          for (final _StoredCookie cookie in existingWordPressCookies) {
+            mergedCookies[cookie.storageKey] = cookie;
+          }
+          preservedWordPressCookieCount = existingWordPressCookies.length;
         }
+
+        if (currentSwpmCookies.isEmpty && existingSwpmCookies.isNotEmpty) {
+          for (final _StoredCookie cookie in existingSwpmCookies) {
+            mergedCookies[cookie.storageKey] = cookie;
+          }
+          preservedSwpmCookieCount = existingSwpmCookies.length;
+        }
+
         cookiesToPersist = mergedCookies.values.toList(growable: false);
-        preservedAuthCookieCount = existingAuthCookies.length;
+        preservedAuthCookieCount =
+            preservedWordPressCookieCount + preservedSwpmCookieCount;
       }
 
       await prefs.setString(
@@ -143,6 +166,8 @@ class WebViewCookieStore {
               .length,
           'swpmCookieCount': currentCookies.where(_isStoredSwpmCookie).length,
           'preservedAuthCookieCount': preservedAuthCookieCount,
+          'preservedWordPressCookieCount': preservedWordPressCookieCount,
+          'preservedSwpmCookieCount': preservedSwpmCookieCount,
           'sessionOnlyCount': cookiesToPersist
               .where((cookie) => cookie.wasSessionOnly)
               .length,
