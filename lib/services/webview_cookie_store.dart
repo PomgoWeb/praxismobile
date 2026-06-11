@@ -14,30 +14,23 @@ class WebViewCookieStore {
 
   final AppLogger logger;
 
-  Future<WebViewCookieRestoreResult> restore() async {
+  Future<void> restore() async {
     try {
       logger.log('webview_cookie_restore_start');
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? rawCookies = prefs.getString(_prefsKey);
       if (rawCookies == null || rawCookies.isEmpty) {
         logger.log('webview_cookie_restore_empty');
-        return const WebViewCookieRestoreResult(
-          restoredCookieCount: 0,
-          restoredAuthCookieCount: 0,
-        );
+        return;
       }
 
       final Object? decoded = jsonDecode(rawCookies);
       if (decoded is! List) {
         logger.log('webview_cookie_restore_invalid_payload');
-        return const WebViewCookieRestoreResult(
-          restoredCookieCount: 0,
-          restoredAuthCookieCount: 0,
-        );
+        return;
       }
 
       int restoredCount = 0;
-      int restoredAuthCount = 0;
       final CookieManager cookieManager = CookieManager.instance();
       for (final Object item in decoded) {
         if (item is! Map) continue;
@@ -55,49 +48,38 @@ class WebViewCookieStore {
           isHttpOnly: cookie.isHttpOnly,
           sameSite: cookie.sameSite,
         );
-        if (restored) {
-          restoredCount += 1;
-          if (_isStoredWordPressAuthCookie(cookie)) {
-            restoredAuthCount += 1;
-          }
-        }
+        if (restored) restoredCount += 1;
       }
 
       logger.log(
         'webview_cookie_restore_done',
-        details: <String, Object?>{
-          'count': restoredCount,
-          'authCookieCount': restoredAuthCount,
-        },
-      );
-      return WebViewCookieRestoreResult(
-        restoredCookieCount: restoredCount,
-        restoredAuthCookieCount: restoredAuthCount,
+        details: <String, Object?>{'count': restoredCount},
       );
     } catch (error, stackTrace) {
       logger.logError('webview_cookie_restore_error', error, stackTrace);
-      return const WebViewCookieRestoreResult(
-        restoredCookieCount: 0,
-        restoredAuthCookieCount: 0,
-      );
     }
   }
 
   Future<WebViewCookiePersistResult> persist({
     bool allowAuthCookieRemoval = false,
-    Uri? currentUri,
   }) async {
     try {
-      final List<_StoredCookie> currentCookies =
-          await _readCurrentPraxisCookies(currentUri);
+      final List<Cookie> cookies = await CookieManager.instance().getCookies(
+        url: WebUri(kBaseUrl),
+      );
+      final List<_StoredCookie> currentCookies = cookies
+          .where(_isPraxisCookie)
+          .map(_StoredCookie.fromCookie)
+          .where((cookie) => !cookie.isExpired)
+          .toList(growable: false);
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
       final int currentAuthCookieCount = currentCookies
-          .where(_isStoredWordPressAuthCookie)
+          .where(_isStoredWordPressCookie)
           .length;
       final List<_StoredCookie> existingAuthCookies = existingCookies
-          .where(_isStoredWordPressAuthCookie)
+          .where(_isStoredWordPressCookie)
           .where((cookie) => !cookie.isExpired)
           .toList(growable: false);
 
@@ -135,7 +117,6 @@ class WebViewCookieStore {
           'currentCount': currentCookies.length,
           'authCookieCount': currentAuthCookieCount,
           'preservedAuthCookieCount': preservedAuthCookieCount,
-          'readUrlCount': _cookieReadTargetCount(currentUri),
           'sessionOnlyCount': cookiesToPersist
               .where((cookie) => cookie.wasSessionOnly)
               .length,
@@ -177,41 +158,6 @@ class WebViewCookieStore {
         .toList(growable: false);
   }
 
-  Future<List<_StoredCookie>> _readCurrentPraxisCookies(Uri? currentUri) async {
-    final Uri baseUri = Uri.parse(kBaseUrl);
-    final List<Uri> targetUris = <Uri>[
-      baseUri,
-      baseUri.resolve('/wp-login.php'),
-      baseUri.resolve('/wp-admin/'),
-      if (currentUri != null && _isPraxisUri(currentUri)) currentUri,
-    ];
-
-    final Map<String, _StoredCookie> cookiesByKey = <String, _StoredCookie>{};
-    final CookieManager cookieManager = CookieManager.instance();
-    for (final Uri targetUri in targetUris) {
-      final List<Cookie> cookies = await cookieManager.getCookies(
-        url: WebUri.uri(targetUri),
-      );
-      for (final Cookie cookie in cookies.where(_isPraxisCookie)) {
-        final _StoredCookie storedCookie = _StoredCookie.fromCookie(cookie);
-        if (storedCookie.isExpired) continue;
-        cookiesByKey[storedCookie.storageKey] = storedCookie;
-      }
-    }
-
-    return cookiesByKey.values.toList(growable: false);
-  }
-
-  bool _isPraxisUri(Uri uri) {
-    final String host = uri.host.toLowerCase();
-    final String baseHost = Uri.parse(kBaseUrl).host.toLowerCase();
-    return host == baseHost || host.endsWith('.$baseHost');
-  }
-
-  int _cookieReadTargetCount(Uri? currentUri) {
-    return currentUri != null && _isPraxisUri(currentUri) ? 4 : 3;
-  }
-
   bool _isPraxisCookie(Cookie cookie) {
     final String domain = (cookie.domain ?? Uri.parse(kBaseUrl).host)
         .toLowerCase()
@@ -220,10 +166,9 @@ class WebViewCookieStore {
     return domain == baseHost || domain.endsWith('.$baseHost');
   }
 
-  bool _isStoredWordPressAuthCookie(_StoredCookie cookie) {
+  bool _isStoredWordPressCookie(_StoredCookie cookie) {
     final String name = cookie.name.toLowerCase();
-    return name.startsWith('wordpress_logged_in_') ||
-        name.startsWith('wordpress_sec_');
+    return name.startsWith('wordpress_') || name.startsWith('wp-');
   }
 }
 
@@ -241,18 +186,6 @@ class WebViewCookiePersistResult {
   final int preservedAuthCookieCount;
 
   bool get preservedAuthCookies => preservedAuthCookieCount > 0;
-}
-
-class WebViewCookieRestoreResult {
-  const WebViewCookieRestoreResult({
-    required this.restoredCookieCount,
-    required this.restoredAuthCookieCount,
-  });
-
-  final int restoredCookieCount;
-  final int restoredAuthCookieCount;
-
-  bool get restoredAuthCookies => restoredAuthCookieCount > 0;
 }
 
 class _StoredCookie {

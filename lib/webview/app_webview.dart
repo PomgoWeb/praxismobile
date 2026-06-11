@@ -23,8 +23,6 @@ class AppWebView extends StatefulWidget {
 
 class _AppWebViewState extends State<AppWebView>
     with AutomaticKeepAliveClientMixin<AppWebView>, WidgetsBindingObserver {
-  static const String _iosNoCacheQueryKey = '_rsapp_nocache';
-
   InAppWebViewController? _controller;
   late final WebViewCookieStore _cookieStore;
   int _lastConsumedRequestId = -1;
@@ -37,8 +35,6 @@ class _AppWebViewState extends State<AppWebView>
   bool _paymentFlowNavigationAllowed = false;
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
-  bool _hideWebViewDuringCookieRecovery = false;
-  bool _resumeCookieRestoreInFlight = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -79,10 +75,6 @@ class _AppWebViewState extends State<AppWebView>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_usesCookiePersistenceWorkaround) return;
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_restoreCookiesAfterResume());
-      return;
-    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -108,8 +100,8 @@ class _AppWebViewState extends State<AppWebView>
     return Stack(
       children: <Widget>[
         InAppWebView(
-          initialUrlRequest: _buildUrlRequest(
-            appState.buildPathUrl(appState.currentPath),
+          initialUrlRequest: URLRequest(
+            url: WebUri.uri(appState.buildPathUrl(appState.currentPath)),
           ),
           initialSettings: InAppWebViewSettings(
             userAgent: 'Mozilla/5.0 $kAppUserAgentTag',
@@ -138,29 +130,21 @@ class _AppWebViewState extends State<AppWebView>
             );
             unawaited(_injectAppCssClasses(controller));
           },
-          onLoadStop: (InAppWebViewController controller, WebUri? uri) async {
-            final AppLogger logger = context.read<AppLogger>();
+          onLoadStop: (InAppWebViewController controller, WebUri? uri) {
             setState(() {
               _showStartupSplash = false;
-              _isLoading = true;
+              _isLoading = false;
               _lastError = null;
             });
             _startupSplashTimer?.cancel();
             appState.markLoadedUrl(uri?.toString());
             unawaited(_injectAppCssClasses(controller));
-            final bool recoveryReloaded = _usesCookiePersistenceWorkaround
-                ? await _persistCookiesAfterLoad(controller, uri)
-                : false;
-            if (recoveryReloaded) return;
-
-            if (!mounted) return;
-            setState(() {
-              _hideWebViewDuringCookieRecovery = false;
-              _isLoading = false;
-            });
             unawaited(_preloadActionPages(controller, appState));
+            if (_usesCookiePersistenceWorkaround) {
+              unawaited(_persistCookiesAfterLoad(controller, uri));
+            }
             unawaited(_logCookieState());
-            logger.log(
+            context.read<AppLogger>().log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
             );
@@ -240,25 +224,10 @@ class _AppWebViewState extends State<AppWebView>
                     details: <String, Object?>{'url': rawUri.toString()},
                   );
                 }
-                if (_shouldRevalidateInternalNavigation(
-                  navigationAction,
-                  rawUri,
-                )) {
-                  context.read<AppLogger>().log(
-                    'webview_internal_navigation_revalidated',
-                    details: <String, Object?>{'url': rawUri.toString()},
-                  );
-                  await controller.loadUrl(
-                    urlRequest: _buildUrlRequest(rawUri),
-                  );
-                  return NavigationActionPolicy.CANCEL;
-                }
                 return NavigationActionPolicy.ALLOW;
               },
         ),
         if (_showStartupSplash)
-          const Positioned.fill(child: StartupSplash())
-        else if (_hideWebViewDuringCookieRecovery)
           const Positioned.fill(child: StartupSplash())
         else if (_isLoading)
           const Align(
@@ -298,69 +267,9 @@ class _AppWebViewState extends State<AppWebView>
       details: <String, Object?>{'url': targetUrl},
     );
     unawaited(
-      _controller!.loadUrl(urlRequest: _buildUrlRequest(Uri.parse(targetUrl))),
+      _controller!.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl))),
     );
     appState.consumeNavigation(appState.navRequestId);
-  }
-
-  URLRequest _buildUrlRequest(Uri uri) {
-    final Uri requestUri = _usesCookiePersistenceWorkaround
-        ? _withIosNoCacheQuery(uri)
-        : uri;
-
-    return URLRequest(
-      url: WebUri.uri(requestUri),
-      cachePolicy: _usesCookiePersistenceWorkaround
-          ? URLRequestCachePolicy.RELOAD_REVALIDATING_CACHE_DATA
-          : URLRequestCachePolicy.USE_PROTOCOL_CACHE_POLICY,
-      headers: _usesCookiePersistenceWorkaround
-          ? const <String, String>{
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache',
-            }
-          : null,
-      httpShouldHandleCookies: true,
-    );
-  }
-
-  Uri _withIosNoCacheQuery(Uri uri) {
-    if (uri.queryParameters.containsKey(_iosNoCacheQueryKey)) {
-      return uri;
-    }
-
-    return uri.replace(
-      queryParameters: <String, String>{
-        ...uri.queryParameters,
-        _iosNoCacheQueryKey: DateTime.now().millisecondsSinceEpoch.toString(),
-      },
-    );
-  }
-
-  bool _shouldRevalidateInternalNavigation(
-    NavigationAction navigationAction,
-    Uri uri,
-  ) {
-    if (!_usesCookiePersistenceWorkaround) return false;
-    if (!navigationAction.isForMainFrame) return false;
-    if (uri.queryParameters.containsKey(_iosNoCacheQueryKey)) return false;
-
-    final String method =
-        navigationAction.request.method?.toUpperCase() ?? 'GET';
-    if (method != 'GET') return false;
-
-    final bool isUserNavigation =
-        navigationAction.hasGesture == true ||
-        navigationAction.navigationType == NavigationType.LINK_ACTIVATED;
-    if (!isUserNavigation) return false;
-
-    final Map<String, String>? headers = navigationAction.request.headers;
-    final String? cacheControl = headers?['Cache-Control'];
-    if (cacheControl?.toLowerCase().contains('no-cache') == true) {
-      return false;
-    }
-
-    final Uri baseUri = Uri.parse(kBaseUrl);
-    return isSameDomainOrSubdomain(baseUri, uri);
   }
 
   Future<void> _restoreCookiesBeforeFirstLoad() async {
@@ -369,10 +278,6 @@ class _AppWebViewState extends State<AppWebView>
       const Duration(seconds: 2),
       onTimeout: () {
         logger.log('webview_cookie_restore_timeout');
-        return const WebViewCookieRestoreResult(
-          restoredCookieCount: 0,
-          restoredAuthCookieCount: 0,
-        );
       },
     );
     if (!mounted) return;
@@ -381,54 +286,7 @@ class _AppWebViewState extends State<AppWebView>
     });
   }
 
-  Future<void> _restoreCookiesAfterResume() async {
-    if (_resumeCookieRestoreInFlight) return;
-    if (!_cookiesRestored) return;
-
-    _resumeCookieRestoreInFlight = true;
-    final AppLogger logger = context.read<AppLogger>();
-    try {
-      logger.log('webview_cookie_resume_restore_start');
-      final WebViewCookieRestoreResult result = await _cookieStore
-          .restore()
-          .timeout(
-            const Duration(seconds: 2),
-            onTimeout: () {
-              logger.log('webview_cookie_resume_restore_timeout');
-              return const WebViewCookieRestoreResult(
-                restoredCookieCount: 0,
-                restoredAuthCookieCount: 0,
-              );
-            },
-          );
-
-      if (!mounted) return;
-      logger.log(
-        'webview_cookie_resume_restore_done',
-        details: <String, Object?>{
-          'count': result.restoredCookieCount,
-          'authCookieCount': result.restoredAuthCookieCount,
-          'reloaded': result.restoredAuthCookies && _controller != null,
-        },
-      );
-
-      if (result.restoredAuthCookies && _controller != null) {
-        await _controller!.reloadFromOrigin();
-      }
-    } catch (error, stackTrace) {
-      if (mounted) {
-        logger.logError(
-          'webview_cookie_resume_restore_error',
-          error,
-          stackTrace,
-        );
-      }
-    } finally {
-      _resumeCookieRestoreInFlight = false;
-    }
-  }
-
-  Future<bool> _persistCookiesAfterLoad(
+  Future<void> _persistCookiesAfterLoad(
     InAppWebViewController controller,
     WebUri? uri,
   ) async {
@@ -436,25 +294,16 @@ class _AppWebViewState extends State<AppWebView>
     final bool allowsAuthCookieRemoval = _isLogoutUrl(uri?.uriValue);
     final WebViewCookiePersistResult result = await _cookieStore.persist(
       allowAuthCookieRemoval: allowsAuthCookieRemoval,
-      currentUri: uri?.uriValue,
     );
 
-    if (!mounted) return false;
-    if (allowsAuthCookieRemoval) return false;
-    if (result.currentAuthCookieCount > 0) {
-      _authCookieRecoveryAttempted = false;
-      return false;
-    }
-    if (!result.preservedAuthCookies) return false;
-    if (_authCookieRecoveryAttempted) return false;
+    if (!mounted) return;
+    if (allowsAuthCookieRemoval) return;
+    if (!result.preservedAuthCookies) return;
+    if (_authCookieRecoveryAttempted) return;
 
     _authCookieRecoveryAttempted = true;
-    setState(() {
-      _hideWebViewDuringCookieRecovery = true;
-      _isLoading = true;
-    });
     logger.log(
-      'webview_cookie_auth_recovery_reload_from_origin',
+      'webview_cookie_auth_recovery_reload',
       details: <String, Object?>{
         'url': uri?.toString() ?? '',
         'preservedAuthCookieCount': result.preservedAuthCookieCount,
@@ -462,8 +311,7 @@ class _AppWebViewState extends State<AppWebView>
     );
 
     await _cookieStore.restore();
-    await controller.reloadFromOrigin();
-    return true;
+    await controller.reload();
   }
 
   Future<void> _preloadActionPages(
@@ -471,12 +319,6 @@ class _AppWebViewState extends State<AppWebView>
     AppState appState,
   ) async {
     if (_preloadedActionPages || appState.isOffline) return;
-    if (_usesCookiePersistenceWorkaround) {
-      context.read<AppLogger>().log(
-        'webview_preload_action_pages_skipped_ios_cookie_workaround',
-      );
-      return;
-    }
     _preloadedActionPages = true;
 
     final List<String> urls = kMenuDestinations
@@ -556,11 +398,6 @@ class _AppWebViewState extends State<AppWebView>
         return cookie.name.toLowerCase().startsWith('wordpress_') ||
             cookie.name.toLowerCase().startsWith('wp-');
       }).length;
-      final int authCookieCount = cookies.where((Cookie cookie) {
-        final String name = cookie.name.toLowerCase();
-        return name.startsWith('wordpress_logged_in_') ||
-            name.startsWith('wordpress_sec_');
-      }).length;
       final int sessionOnlyCount = cookies.where((Cookie cookie) {
         return cookie.isSessionOnly == true;
       }).length;
@@ -570,7 +407,6 @@ class _AppWebViewState extends State<AppWebView>
         details: <String, Object?>{
           'count': cookies.length,
           'wordpressCount': wordpressCookieCount,
-          'authCookieCount': authCookieCount,
           'sessionOnlyCount': sessionOnlyCount,
           'persistentCount': cookies.length - sessionOnlyCount,
         },
