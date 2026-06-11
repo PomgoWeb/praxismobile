@@ -37,10 +37,8 @@ class _AppWebViewState extends State<AppWebView>
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
   bool _isProtectingAuthNavigation = false;
-  String? _initialCookieHeader;
   String? _lastAuthenticatedUrl;
   String? _pendingAppNavigationUrl;
-  String? _authHeaderNavigationUrl;
   DateTime? _lastAuthenticatedAt;
 
   @override
@@ -267,27 +265,14 @@ class _AppWebViewState extends State<AppWebView>
                   );
                   return NavigationActionPolicy.CANCEL;
                 }
-                if (_shouldAllowAuthHeaderNavigation(rawUri)) {
-                  _authHeaderNavigationUrl = null;
-                  context.read<AppLogger>().log(
-                    'webview_auth_header_navigation_allowed',
-                    details: <String, Object?>{'url': rawUri.toString()},
-                  );
-                  return NavigationActionPolicy.ALLOW;
-                }
-                if (_shouldAttachAuthHeaderToNavigation(
+                if (_shouldRestoreAuthCookiesBeforeNavigation(
                   rawUri,
                   navigationAction,
                 )) {
-                  final bool loadedWithHeader =
-                      await _loadWithStoredAuthCookies(
-                        controller,
-                        rawUri,
-                        'same_domain',
-                      );
-                  if (loadedWithHeader) {
-                    return NavigationActionPolicy.CANCEL;
-                  }
+                  await _restoreAuthCookiesBeforeNavigation(
+                    rawUri,
+                    'same_domain',
+                  );
                 }
                 if (_shouldProtectAuthNavigation(rawUri, navigationAction)) {
                   _startAuthNavigationProtection(rawUri, 'same_domain');
@@ -341,12 +326,10 @@ class _AppWebViewState extends State<AppWebView>
       details: <String, Object?>{'url': targetUrl},
     );
     unawaited(
-      _loadWithStoredAuthCookies(
-        _controller!,
+      _restoreAuthCookiesBeforeNavigation(
         Uri.parse(targetUrl),
         'app_request',
-      ).then((bool loadedWithHeader) async {
-        if (loadedWithHeader) return;
+      ).then((_) async {
         await _controller!.loadUrl(
           urlRequest: URLRequest(url: WebUri(targetUrl)),
         );
@@ -394,12 +377,7 @@ class _AppWebViewState extends State<AppWebView>
     return true;
   }
 
-  bool _shouldAllowAuthHeaderNavigation(Uri uri) {
-    if (!_usesCookiePersistenceWorkaround) return false;
-    return _authHeaderNavigationUrl == _normalizeUrlForDuplicateGuard(uri);
-  }
-
-  bool _shouldAttachAuthHeaderToNavigation(
+  bool _shouldRestoreAuthCookiesBeforeNavigation(
     Uri uri,
     NavigationAction navigationAction,
   ) {
@@ -415,20 +393,19 @@ class _AppWebViewState extends State<AppWebView>
     return true;
   }
 
-  Future<bool> _loadWithStoredAuthCookies(
-    InAppWebViewController controller,
+  Future<void> _restoreAuthCookiesBeforeNavigation(
     Uri uri,
     String source,
   ) async {
-    if (!_usesCookiePersistenceWorkaround) return false;
-    if (_isLogoutUrl(uri)) return false;
+    if (!_usesCookiePersistenceWorkaround) return;
+    if (_isLogoutUrl(uri)) return;
 
     await _cookieStore.restore().timeout(
       const Duration(seconds: 1),
       onTimeout: () {
         if (mounted) {
           context.read<AppLogger>().log(
-            'webview_auth_cookie_restore_timeout',
+            'webview_auth_cookie_pre_navigation_restore_timeout',
             details: <String, Object?>{'url': uri.toString()},
           );
         }
@@ -442,41 +419,24 @@ class _AppWebViewState extends State<AppWebView>
           onTimeout: () {
             if (mounted) {
               context.read<AppLogger>().log(
-                'webview_auth_header_navigation_timeout',
+                'webview_auth_cookie_pre_navigation_state_timeout',
                 details: <String, Object?>{'url': uri.toString()},
               );
             }
             return const WebViewCookieHeaderResult();
           },
         );
-    if (!headerResult.hasHeader || headerResult.authCookieCount == 0) {
-      return false;
-    }
-
-    final String normalizedUrl = _normalizeUrlForDuplicateGuard(uri);
-    _authHeaderNavigationUrl = normalizedUrl;
-    _startAuthNavigationProtection(uri, source);
     if (mounted) {
       context.read<AppLogger>().log(
-        'webview_auth_header_navigation_start',
+        'webview_auth_cookie_pre_navigation_restore_done',
         details: <String, Object?>{
           'url': uri.toString(),
           'source': source,
           'cookieCount': headerResult.cookieCount,
           'authCookieCount': headerResult.authCookieCount,
-          'headerLength': headerResult.header?.length ?? 0,
         },
       );
     }
-
-    await controller.loadUrl(
-      urlRequest: URLRequest(
-        url: WebUri.uri(uri),
-        headers: <String, String>{'Cookie': headerResult.header!},
-        httpShouldHandleCookies: true,
-      ),
-    );
-    return true;
   }
 
   void _startAuthNavigationProtection(Uri uri, String source) {
@@ -502,17 +462,7 @@ class _AppWebViewState extends State<AppWebView>
   }
 
   URLRequest _buildInitialUrlRequest(Uri uri) {
-    final String? cookieHeader = _usesCookiePersistenceWorkaround
-        ? _initialCookieHeader
-        : null;
-
-    return URLRequest(
-      url: WebUri.uri(uri),
-      headers: cookieHeader?.isNotEmpty == true
-          ? <String, String>{'Cookie': cookieHeader!}
-          : null,
-      httpShouldHandleCookies: true,
-    );
+    return URLRequest(url: WebUri.uri(uri), httpShouldHandleCookies: true);
   }
 
   Future<void> _restoreCookiesBeforeFirstLoad() async {
@@ -532,14 +482,11 @@ class _AppWebViewState extends State<AppWebView>
             return const WebViewCookieHeaderResult();
           },
         );
-    _initialCookieHeader = headerResult.header;
     logger.log(
-      'webview_cookie_initial_header_ready',
+      'webview_cookie_initial_state_ready',
       details: <String, Object?>{
-        'enabled': headerResult.hasHeader,
         'cookieCount': headerResult.cookieCount,
         'authCookieCount': headerResult.authCookieCount,
-        'headerLength': headerResult.header?.length ?? 0,
       },
     );
     if (!mounted) return;
