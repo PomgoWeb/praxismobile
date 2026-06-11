@@ -36,6 +36,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
+  bool _isProtectingAuthNavigation = false;
   String? _initialCookieHeader;
   String? _lastAuthenticatedUrl;
   String? _pendingAppNavigationUrl;
@@ -161,6 +162,7 @@ class _AppWebViewState extends State<AppWebView>
             setState(() {
               _isLoading = false;
               _isRecoveringAuthCookies = false;
+              _isProtectingAuthNavigation = false;
             });
             unawaited(_preloadActionPages(controller, appState));
             unawaited(_logCookieState());
@@ -178,6 +180,7 @@ class _AppWebViewState extends State<AppWebView>
                 setState(() {
                   _showStartupSplash = false;
                   _isLoading = false;
+                  _isProtectingAuthNavigation = false;
                   _lastError = error.description;
                 });
                 _startupSplashTimer?.cancel();
@@ -259,12 +262,15 @@ class _AppWebViewState extends State<AppWebView>
                   );
                   return NavigationActionPolicy.CANCEL;
                 }
+                if (_shouldProtectAuthNavigation(rawUri, navigationAction)) {
+                  _startAuthNavigationProtection(rawUri, 'same_domain');
+                }
                 return NavigationActionPolicy.ALLOW;
               },
         ),
         if (_showStartupSplash)
           const Positioned.fill(child: StartupSplash())
-        else if (_isRecoveringAuthCookies)
+        else if (_isRecoveringAuthCookies || _isProtectingAuthNavigation)
           const Positioned.fill(child: StartupSplash())
         else if (_isLoading)
           const Align(
@@ -302,6 +308,7 @@ class _AppWebViewState extends State<AppWebView>
     _pendingAppNavigationUrl = _normalizeUrlForDuplicateGuard(
       Uri.parse(targetUrl),
     );
+    _startAuthNavigationProtection(Uri.parse(targetUrl), 'app_request');
     context.read<AppLogger>().log(
       'webview_load_url_requested',
       details: <String, Object?>{'url': targetUrl},
@@ -338,6 +345,35 @@ class _AppWebViewState extends State<AppWebView>
     if (lastAuthenticatedAt == null) return false;
     return DateTime.now().difference(lastAuthenticatedAt) <
         const Duration(seconds: 8);
+  }
+
+  bool _shouldProtectAuthNavigation(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!navigationAction.isForMainFrame) return false;
+    if (_lastAuthenticatedAt == null) return false;
+    if (_isLogoutUrl(uri)) return false;
+    return true;
+  }
+
+  void _startAuthNavigationProtection(Uri uri, String source) {
+    if (!_usesCookiePersistenceWorkaround) return;
+    if (_lastAuthenticatedAt == null) return;
+    if (_isLogoutUrl(uri)) return;
+    if (!mounted) return;
+
+    if (!_isProtectingAuthNavigation) {
+      context.read<AppLogger>().log(
+        'webview_auth_navigation_protection_start',
+        details: <String, Object?>{'url': uri.toString(), 'source': source},
+      );
+    }
+    setState(() {
+      _isProtectingAuthNavigation = true;
+      _isLoading = true;
+    });
   }
 
   String _normalizeUrlForDuplicateGuard(Uri uri) {
@@ -404,6 +440,7 @@ class _AppWebViewState extends State<AppWebView>
     if (!mounted) return false;
     if (allowsAuthCookieRemoval) {
       _isRecoveringAuthCookies = false;
+      _isProtectingAuthNavigation = false;
       return false;
     }
     if (!result.preservedAuthCookies) {
@@ -415,16 +452,19 @@ class _AppWebViewState extends State<AppWebView>
         }
       }
       _isRecoveringAuthCookies = false;
+      _isProtectingAuthNavigation = false;
       return false;
     }
     if (_authCookieRecoveryAttempted) {
       _isRecoveringAuthCookies = false;
+      _isProtectingAuthNavigation = false;
       return false;
     }
 
     _authCookieRecoveryAttempted = true;
     setState(() {
       _isRecoveringAuthCookies = true;
+      _isProtectingAuthNavigation = true;
       _isLoading = true;
     });
     logger.log(
