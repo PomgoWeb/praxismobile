@@ -103,6 +103,18 @@ class WebViewCookieStore {
       final List<_StoredCookie> currentSwpmCookies = currentCookies
           .where(_isStoredSwpmCookie)
           .toList(growable: false);
+      final List<_StoredCookie> currentWordPressLoggedInCookies = currentCookies
+          .where(_isStoredWordPressLoggedInCookie)
+          .toList(growable: false);
+      final List<_StoredCookie> currentWordPressSecCookies = currentCookies
+          .where(_isStoredWordPressSecCookie)
+          .toList(growable: false);
+      final List<_StoredCookie> currentSwpmMembershipCookies = currentCookies
+          .where(_isStoredSwpmMembershipCookie)
+          .toList(growable: false);
+      final List<_StoredCookie> currentSwpmFlagCookies = currentCookies
+          .where(_isStoredSwpmFlagCookie)
+          .toList(growable: false);
       final int currentAuthCookieCount =
           currentWordPressCookies.length + currentSwpmCookies.length;
       final List<_StoredCookie> existingWordPressCookies = existingCookies
@@ -164,7 +176,11 @@ class WebViewCookieStore {
           'wordpressCookieCount': currentCookies
               .where(_isStoredWordPressCookie)
               .length,
+          'wordpressLoggedInCount': currentWordPressLoggedInCookies.length,
+          'wordpressSecCount': currentWordPressSecCookies.length,
           'swpmCookieCount': currentCookies.where(_isStoredSwpmCookie).length,
+          'swpmMembershipCount': currentSwpmMembershipCookies.length,
+          'swpmFlagCount': currentSwpmFlagCookies.length,
           'preservedAuthCookieCount': preservedAuthCookieCount,
           'preservedWordPressCookieCount': preservedWordPressCookieCount,
           'preservedSwpmCookieCount': preservedSwpmCookieCount,
@@ -222,10 +238,26 @@ class WebViewCookieStore {
     return name.startsWith('wordpress_') || name.startsWith('wp-');
   }
 
+  bool _isStoredWordPressLoggedInCookie(_StoredCookie cookie) {
+    return cookie.name.toLowerCase().startsWith('wordpress_logged_in_');
+  }
+
+  bool _isStoredWordPressSecCookie(_StoredCookie cookie) {
+    return cookie.name.toLowerCase().startsWith('wordpress_sec_');
+  }
+
   bool _isStoredSwpmCookie(_StoredCookie cookie) {
+    return _isStoredSwpmMembershipCookie(cookie) ||
+        _isStoredSwpmFlagCookie(cookie);
+  }
+
+  bool _isStoredSwpmMembershipCookie(_StoredCookie cookie) {
+    return cookie.name.toLowerCase().startsWith('simple_wp_membership_');
+  }
+
+  bool _isStoredSwpmFlagCookie(_StoredCookie cookie) {
     final String name = cookie.name.toLowerCase();
-    return name.startsWith('simple_wp_membership_') ||
-        name == 'swpm_in_use' ||
+    return name == 'swpm_in_use' ||
         name == 'wp_swpm_in_use' ||
         name == 'swpm_session';
   }

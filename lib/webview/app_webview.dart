@@ -252,6 +252,9 @@ class _AppWebViewState extends State<AppWebView>
                     details: <String, Object?>{'url': rawUri.toString()},
                   );
                 }
+                if (_isAuthDiagnosticUrl(rawUri)) {
+                  _logAuthNavigationDiagnostic(rawUri, navigationAction);
+                }
                 if (_shouldCancelAutomaticLogoutNavigation(
                   rawUri,
                   navigationAction,
@@ -270,7 +273,31 @@ class _AppWebViewState extends State<AppWebView>
                 }
                 if (_isLogoutUrl(rawUri)) {
                   _logoutNavigationAllowed = true;
+                  context.read<AppLogger>().log(
+                    'webview_logout_navigation_allowed',
+                    details: <String, Object?>{
+                      'url': rawUri.toString(),
+                      'navigationType':
+                          navigationAction.navigationType?.toString() ?? '',
+                      'hasGesture': navigationAction.hasGesture,
+                      'isUserInitiated': _isUserInitiatedNavigation(
+                        navigationAction,
+                      ),
+                    },
+                  );
                   return NavigationActionPolicy.ALLOW;
+                }
+                if (_isLoginResolverUrl(rawUri)) {
+                  context.read<AppLogger>().log(
+                    'webview_login_resolver_navigation_allowed',
+                    details: <String, Object?>{
+                      'url': rawUri.toString(),
+                      'navigationType':
+                          navigationAction.navigationType?.toString() ?? '',
+                      'hasGesture': navigationAction.hasGesture,
+                      'hasKnownAuthSession': _lastAuthenticatedAt != null,
+                    },
+                  );
                 }
                 if (_shouldBlockAutomaticDuplicateNavigation(
                   rawUri,
@@ -417,6 +444,30 @@ class _AppWebViewState extends State<AppWebView>
         navigationAction.navigationType == NavigationType.LINK_ACTIVATED;
   }
 
+  void _logAuthNavigationDiagnostic(
+    Uri uri,
+    NavigationAction navigationAction,
+  ) {
+    context.read<AppLogger>().log(
+      'webview_auth_navigation_diagnostic',
+      details: <String, Object?>{
+        'url': uri.toString(),
+        'isLoginResolver': _isLoginResolverUrl(uri),
+        'isLogoutUrl': _isLogoutUrl(uri),
+        'hasKnownAuthSession': _lastAuthenticatedAt != null,
+        'logoutNavigationAllowed': _logoutNavigationAllowed,
+        'isUserInitiated': _isUserInitiatedNavigation(navigationAction),
+        'navigationType': navigationAction.navigationType?.toString() ?? '',
+        'hasGesture': navigationAction.hasGesture,
+        'mainFrame': navigationAction.isForMainFrame,
+      },
+    );
+  }
+
+  bool _isAuthDiagnosticUrl(Uri uri) {
+    return _isLoginResolverUrl(uri) || _isLogoutUrl(uri);
+  }
+
   bool _shouldRestoreAuthCookiesBeforeNavigation(
     Uri uri,
     NavigationAction navigationAction,
@@ -541,6 +592,15 @@ class _AppWebViewState extends State<AppWebView>
   ) async {
     final AppLogger logger = context.read<AppLogger>();
     final bool allowsAuthCookieRemoval = _isLogoutUrl(uri?.uriValue);
+    if (allowsAuthCookieRemoval) {
+      logger.log(
+        'webview_logout_url_loaded',
+        details: <String, Object?>{
+          'url': uri?.toString() ?? '',
+          'logoutNavigationAllowed': _logoutNavigationAllowed,
+        },
+      );
+    }
     final WebViewCookiePersistResult result = await _cookieStore.persist(
       allowAuthCookieRemoval: allowsAuthCookieRemoval,
     );
@@ -660,6 +720,10 @@ class _AppWebViewState extends State<AppWebView>
     return WebViewAuthNavigationGuard.isLogoutUrl(uri);
   }
 
+  bool _isLoginResolverUrl(Uri uri) {
+    return WebViewAuthNavigationGuard.isLoginResolverUrl(uri);
+  }
+
   Future<void> _logCookieState() async {
     final AppLogger logger = context.read<AppLogger>();
     try {
@@ -672,8 +736,23 @@ class _AppWebViewState extends State<AppWebView>
         return cookie.name.toLowerCase().startsWith('wordpress_') ||
             cookie.name.toLowerCase().startsWith('wp-');
       }).length;
+      final int wordpressLoggedInCookieCount = cookies.where((Cookie cookie) {
+        return cookie.name.toLowerCase().startsWith('wordpress_logged_in_');
+      }).length;
+      final int wordpressSecCookieCount = cookies.where((Cookie cookie) {
+        return cookie.name.toLowerCase().startsWith('wordpress_sec_');
+      }).length;
       final int swpmCookieCount = cookies.where((Cookie cookie) {
         return _isSwpmCookieName(cookie.name);
+      }).length;
+      final int swpmMembershipCookieCount = cookies.where((Cookie cookie) {
+        return cookie.name.toLowerCase().startsWith('simple_wp_membership_');
+      }).length;
+      final int swpmFlagCookieCount = cookies.where((Cookie cookie) {
+        final String name = cookie.name.toLowerCase();
+        return name == 'swpm_in_use' ||
+            name == 'wp_swpm_in_use' ||
+            name == 'swpm_session';
       }).length;
       final int sessionOnlyCount = cookies.where((Cookie cookie) {
         return cookie.isSessionOnly == true;
@@ -684,7 +763,11 @@ class _AppWebViewState extends State<AppWebView>
         details: <String, Object?>{
           'count': cookies.length,
           'wordpressCount': wordpressCookieCount,
+          'wordpressLoggedInCount': wordpressLoggedInCookieCount,
+          'wordpressSecCount': wordpressSecCookieCount,
           'swpmCount': swpmCookieCount,
+          'swpmMembershipCount': swpmMembershipCookieCount,
+          'swpmFlagCount': swpmFlagCookieCount,
           'authCount': wordpressCookieCount + swpmCookieCount,
           'sessionOnlyCount': sessionOnlyCount,
           'persistentCount': cookies.length - sessionOnlyCount,
