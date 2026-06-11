@@ -35,6 +35,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _paymentFlowNavigationAllowed = false;
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
+  bool _isRecoveringAuthCookies = false;
   String? _initialCookieHeader;
 
   @override
@@ -155,6 +156,7 @@ class _AppWebViewState extends State<AppWebView>
             if (!mounted) return;
             setState(() {
               _isLoading = false;
+              _isRecoveringAuthCookies = false;
             });
             unawaited(_preloadActionPages(controller, appState));
             unawaited(_logCookieState());
@@ -242,6 +244,8 @@ class _AppWebViewState extends State<AppWebView>
               },
         ),
         if (_showStartupSplash)
+          const Positioned.fill(child: StartupSplash())
+        else if (_isRecoveringAuthCookies)
           const Positioned.fill(child: StartupSplash())
         else if (_isLoading)
           const Align(
@@ -344,15 +348,29 @@ class _AppWebViewState extends State<AppWebView>
     );
 
     if (!mounted) return false;
-    if (allowsAuthCookieRemoval) return false;
-    if (result.currentAuthCookieCount > 0) {
-      _authCookieRecoveryAttempted = false;
+    if (allowsAuthCookieRemoval) {
+      _isRecoveringAuthCookies = false;
       return false;
     }
-    if (!result.preservedAuthCookies) return false;
-    if (_authCookieRecoveryAttempted) return false;
+    if (result.currentAuthCookieCount > 0) {
+      _authCookieRecoveryAttempted = false;
+      _isRecoveringAuthCookies = false;
+      return false;
+    }
+    if (!result.preservedAuthCookies) {
+      _isRecoveringAuthCookies = false;
+      return false;
+    }
+    if (_authCookieRecoveryAttempted) {
+      _isRecoveringAuthCookies = false;
+      return false;
+    }
 
     _authCookieRecoveryAttempted = true;
+    setState(() {
+      _isRecoveringAuthCookies = true;
+      _isLoading = true;
+    });
     logger.log(
       'webview_cookie_auth_recovery_reload',
       details: <String, Object?>{
@@ -371,6 +389,11 @@ class _AppWebViewState extends State<AppWebView>
     AppState appState,
   ) async {
     if (_preloadedActionPages || appState.isOffline) return;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      _preloadedActionPages = true;
+      context.read<AppLogger>().log('webview_preload_action_pages_skipped_ios');
+      return;
+    }
     _preloadedActionPages = true;
 
     final List<String> urls = kMenuDestinations
