@@ -60,6 +60,28 @@ class WebViewCookieStore {
     }
   }
 
+  Future<WebViewCookieHeaderResult> buildInitialCookieHeader() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<_StoredCookie> cookies = _loadStoredCookies(prefs);
+      if (cookies.isEmpty) return const WebViewCookieHeaderResult();
+
+      final String header = cookies
+          .where((cookie) => cookie.name.isNotEmpty)
+          .map((cookie) => '${cookie.name}=${cookie.value}')
+          .join('; ');
+
+      return WebViewCookieHeaderResult(
+        header: header.isEmpty ? null : header,
+        cookieCount: cookies.length,
+        authCookieCount: cookies.where(_isStoredWordPressCookie).length,
+      );
+    } catch (error, stackTrace) {
+      logger.logError('webview_cookie_initial_header_error', error, stackTrace);
+      return const WebViewCookieHeaderResult();
+    }
+  }
+
   Future<WebViewCookiePersistResult> persist({
     bool allowAuthCookieRemoval = false,
   }) async {
@@ -170,6 +192,20 @@ class WebViewCookieStore {
     final String name = cookie.name.toLowerCase();
     return name.startsWith('wordpress_') || name.startsWith('wp-');
   }
+}
+
+class WebViewCookieHeaderResult {
+  const WebViewCookieHeaderResult({
+    this.header,
+    this.cookieCount = 0,
+    this.authCookieCount = 0,
+  });
+
+  final String? header;
+  final int cookieCount;
+  final int authCookieCount;
+
+  bool get hasHeader => header?.isNotEmpty == true;
 }
 
 class WebViewCookiePersistResult {

@@ -35,6 +35,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _paymentFlowNavigationAllowed = false;
   bool _cookiesRestored = false;
   bool _authCookieRecoveryAttempted = false;
+  String? _initialCookieHeader;
 
   @override
   bool get wantKeepAlive => true;
@@ -100,8 +101,8 @@ class _AppWebViewState extends State<AppWebView>
     return Stack(
       children: <Widget>[
         InAppWebView(
-          initialUrlRequest: URLRequest(
-            url: WebUri.uri(appState.buildPathUrl(appState.currentPath)),
+          initialUrlRequest: _buildInitialUrlRequest(
+            appState.buildPathUrl(appState.currentPath),
           ),
           initialSettings: InAppWebViewSettings(
             userAgent: defaultTargetPlatform == TargetPlatform.iOS
@@ -285,12 +286,45 @@ class _AppWebViewState extends State<AppWebView>
     appState.consumeNavigation(appState.navRequestId);
   }
 
+  URLRequest _buildInitialUrlRequest(Uri uri) {
+    final String? cookieHeader = _usesCookiePersistenceWorkaround
+        ? _initialCookieHeader
+        : null;
+
+    return URLRequest(
+      url: WebUri.uri(uri),
+      headers: cookieHeader?.isNotEmpty == true
+          ? <String, String>{'Cookie': cookieHeader!}
+          : null,
+      httpShouldHandleCookies: true,
+    );
+  }
+
   Future<void> _restoreCookiesBeforeFirstLoad() async {
     final AppLogger logger = context.read<AppLogger>();
     await _cookieStore.restore().timeout(
       const Duration(seconds: 2),
       onTimeout: () {
         logger.log('webview_cookie_restore_timeout');
+      },
+    );
+    final WebViewCookieHeaderResult headerResult = await _cookieStore
+        .buildInitialCookieHeader()
+        .timeout(
+          const Duration(seconds: 1),
+          onTimeout: () {
+            logger.log('webview_cookie_initial_header_timeout');
+            return const WebViewCookieHeaderResult();
+          },
+        );
+    _initialCookieHeader = headerResult.header;
+    logger.log(
+      'webview_cookie_initial_header_ready',
+      details: <String, Object?>{
+        'enabled': headerResult.hasHeader,
+        'cookieCount': headerResult.cookieCount,
+        'authCookieCount': headerResult.authCookieCount,
+        'headerLength': headerResult.header?.length ?? 0,
       },
     );
     if (!mounted) return;
