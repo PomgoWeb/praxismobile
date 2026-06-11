@@ -104,7 +104,13 @@ class _AppWebViewState extends State<AppWebView>
             url: WebUri.uri(appState.buildPathUrl(appState.currentPath)),
           ),
           initialSettings: InAppWebViewSettings(
-            userAgent: 'Mozilla/5.0 $kAppUserAgentTag',
+            userAgent: defaultTargetPlatform == TargetPlatform.iOS
+                ? null
+                : 'Mozilla/5.0 $kAppUserAgentTag',
+            applicationNameForUserAgent:
+                defaultTargetPlatform == TargetPlatform.iOS
+                ? kAppUserAgentTag
+                : null,
             javaScriptEnabled: true,
             useShouldOverrideUrlLoading: true,
             incognito: false,
