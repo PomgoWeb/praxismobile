@@ -74,7 +74,7 @@ class WebViewCookieStore {
       return WebViewCookieHeaderResult(
         header: header.isEmpty ? null : header,
         cookieCount: cookies.length,
-        authCookieCount: cookies.where(_isStoredWordPressCookie).length,
+        authCookieCount: cookies.where(_isStoredAuthCookie).length,
       );
     } catch (error, stackTrace) {
       logger.logError('webview_cookie_initial_header_error', error, stackTrace);
@@ -98,10 +98,10 @@ class WebViewCookieStore {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final List<_StoredCookie> existingCookies = _loadStoredCookies(prefs);
       final int currentAuthCookieCount = currentCookies
-          .where(_isStoredWordPressCookie)
+          .where(_isStoredAuthCookie)
           .length;
       final List<_StoredCookie> existingAuthCookies = existingCookies
-          .where(_isStoredWordPressCookie)
+          .where(_isStoredAuthCookie)
           .where((cookie) => !cookie.isExpired)
           .toList(growable: false);
 
@@ -138,6 +138,10 @@ class WebViewCookieStore {
           'count': cookiesToPersist.length,
           'currentCount': currentCookies.length,
           'authCookieCount': currentAuthCookieCount,
+          'wordpressCookieCount': currentCookies
+              .where(_isStoredWordPressCookie)
+              .length,
+          'swpmCookieCount': currentCookies.where(_isStoredSwpmCookie).length,
           'preservedAuthCookieCount': preservedAuthCookieCount,
           'sessionOnlyCount': cookiesToPersist
               .where((cookie) => cookie.wasSessionOnly)
@@ -191,6 +195,18 @@ class WebViewCookieStore {
   bool _isStoredWordPressCookie(_StoredCookie cookie) {
     final String name = cookie.name.toLowerCase();
     return name.startsWith('wordpress_') || name.startsWith('wp-');
+  }
+
+  bool _isStoredSwpmCookie(_StoredCookie cookie) {
+    final String name = cookie.name.toLowerCase();
+    return name.startsWith('simple_wp_membership_') ||
+        name == 'swpm_in_use' ||
+        name == 'wp_swpm_in_use' ||
+        name == 'swpm_session';
+  }
+
+  bool _isStoredAuthCookie(_StoredCookie cookie) {
+    return _isStoredWordPressCookie(cookie) || _isStoredSwpmCookie(cookie);
   }
 }
 

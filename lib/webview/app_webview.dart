@@ -513,6 +513,8 @@ class _AppWebViewState extends State<AppWebView>
     if (uri == null) return false;
     final String value = uri.toString().toLowerCase();
     return value.contains('logout') ||
+        value.contains('logged_out') ||
+        value.contains('swpm_logged_out') ||
         value.contains('log-out') ||
         value.contains('deconnexion') ||
         value.contains('d%c3%a9connexion') ||
@@ -531,6 +533,9 @@ class _AppWebViewState extends State<AppWebView>
         return cookie.name.toLowerCase().startsWith('wordpress_') ||
             cookie.name.toLowerCase().startsWith('wp-');
       }).length;
+      final int swpmCookieCount = cookies.where((Cookie cookie) {
+        return _isSwpmCookieName(cookie.name);
+      }).length;
       final int sessionOnlyCount = cookies.where((Cookie cookie) {
         return cookie.isSessionOnly == true;
       }).length;
@@ -540,6 +545,8 @@ class _AppWebViewState extends State<AppWebView>
         details: <String, Object?>{
           'count': cookies.length,
           'wordpressCount': wordpressCookieCount,
+          'swpmCount': swpmCookieCount,
+          'authCount': wordpressCookieCount + swpmCookieCount,
           'sessionOnlyCount': sessionOnlyCount,
           'persistentCount': cookies.length - sessionOnlyCount,
         },
@@ -548,6 +555,14 @@ class _AppWebViewState extends State<AppWebView>
       if (!mounted) return;
       logger.logError('webview_cookie_state_error', error, stackTrace);
     }
+  }
+
+  bool _isSwpmCookieName(String name) {
+    final String lowerName = name.toLowerCase();
+    return lowerName.startsWith('simple_wp_membership_') ||
+        lowerName == 'swpm_in_use' ||
+        lowerName == 'wp_swpm_in_use' ||
+        lowerName == 'swpm_session';
   }
 
   Future<void> _injectAppCssClasses(InAppWebViewController controller) async {
