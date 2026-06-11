@@ -40,6 +40,7 @@ class _AppWebViewState extends State<AppWebView>
   String? _lastAuthenticatedUrl;
   String? _pendingAppNavigationUrl;
   DateTime? _lastAuthenticatedAt;
+  final Set<String> _cookieHeaderNavigationUrls = <String>{};
 
   @override
   bool get wantKeepAlive => true;
@@ -259,6 +260,13 @@ class _AppWebViewState extends State<AppWebView>
                   );
                   return NavigationActionPolicy.CANCEL;
                 }
+                if (await _reloadSameDomainWithCookieHeader(
+                  controller,
+                  rawUri,
+                  navigationAction,
+                )) {
+                  return NavigationActionPolicy.CANCEL;
+                }
                 return NavigationActionPolicy.ALLOW;
               },
         ),
@@ -342,6 +350,53 @@ class _AppWebViewState extends State<AppWebView>
 
   String _normalizeUrlForDuplicateGuard(Uri uri) {
     return uri.replace(fragment: '').toString();
+  }
+
+  Future<bool> _reloadSameDomainWithCookieHeader(
+    InAppWebViewController controller,
+    Uri uri,
+    NavigationAction navigationAction,
+  ) async {
+    if (!_usesCookiePersistenceWorkaround) return false;
+    if (!navigationAction.isForMainFrame) return false;
+    if (_isLogoutUrl(uri)) return false;
+
+    final String method = navigationAction.request.method ?? 'GET';
+    if (method.toUpperCase() != 'GET') return false;
+
+    final String normalizedUrl = _normalizeUrlForDuplicateGuard(uri);
+    if (_cookieHeaderNavigationUrls.remove(normalizedUrl)) return false;
+
+    final WebViewCookieHeaderResult headerResult = await _cookieStore
+        .buildInitialCookieHeader()
+        .timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => const WebViewCookieHeaderResult(),
+        );
+    if (!headerResult.hasHeader || headerResult.authCookieCount == 0) {
+      return false;
+    }
+
+    _cookieHeaderNavigationUrls.add(normalizedUrl);
+    if (mounted) {
+      context.read<AppLogger>().log(
+        'webview_same_domain_navigation_with_cookie_header',
+        details: <String, Object?>{
+          'url': uri.toString(),
+          'authCookieCount': headerResult.authCookieCount,
+          'headerLength': headerResult.header?.length ?? 0,
+        },
+      );
+    }
+
+    await controller.loadUrl(
+      urlRequest: URLRequest(
+        url: WebUri.uri(uri),
+        headers: <String, String>{'Cookie': headerResult.header!},
+        httpShouldHandleCookies: true,
+      ),
+    );
+    return true;
   }
 
   URLRequest _buildInitialUrlRequest(Uri uri) {
