@@ -93,17 +93,23 @@ class _AppShellState extends State<AppShell> {
               ],
             )
           : null,
-      body: Stack(
-        children: <Widget>[
-          AppWebView(key: _webViewKey),
-          if (appState.isOffline)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                child: _OfflineView(onRetry: _retryConnectivityCheck),
+      body: SafeArea(
+        top: !kDebugMode,
+        left: false,
+        right: false,
+        bottom: false,
+        child: Stack(
+          children: <Widget>[
+            AppWebView(key: _webViewKey),
+            if (appState.isOffline)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: _OfflineView(onRetry: _retryConnectivityCheck),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: Container(
         padding: EdgeInsets.fromLTRB(8, 6, 8, 6 + bottomInset),
