@@ -283,7 +283,11 @@ class _AppWebViewState extends State<AppWebView>
                     },
                   );
                   _suppressNextCancelledNavigationError = true;
-                  unawaited(_cookieStore.restore());
+                  unawaited(
+                    _cookieStore.dropStoredAuthCookies(
+                      reason: 'automatic_logout_redirect',
+                    ),
+                  );
                   return NavigationActionPolicy.CANCEL;
                 }
                 if (_isLogoutUrl(rawUri)) {
@@ -629,7 +633,12 @@ class _AppWebViewState extends State<AppWebView>
     WebUri? uri,
   ) async {
     final AppLogger logger = context.read<AppLogger>();
-    final bool allowsAuthCookieRemoval = _isLogoutUrl(uri?.uriValue);
+    final Uri? loadedUri = uri?.uriValue;
+    final bool allowsAuthCookieRemoval = _isLogoutUrl(loadedUri);
+    final bool signupRedirectWithKnownAuth =
+        _usesCookiePersistenceWorkaround &&
+        _isSignupUrl(loadedUri) &&
+        _lastAuthenticatedAt != null;
     if (allowsAuthCookieRemoval) {
       logger.log(
         'webview_logout_url_loaded',
@@ -644,6 +653,24 @@ class _AppWebViewState extends State<AppWebView>
     );
 
     if (!mounted) return false;
+    if (signupRedirectWithKnownAuth) {
+      logger.log(
+        'webview_signup_redirect_with_known_auth',
+        details: <String, Object?>{
+          'url': uri?.toString() ?? '',
+          'currentAuthCookieCount': result.currentAuthCookieCount,
+          'persistedCookieCount': result.persistedCookieCount,
+        },
+      );
+      _lastAuthenticatedAt = null;
+      _lastAuthenticatedUrl = null;
+      _authCookieRecoveryAttempted = false;
+      unawaited(
+        _cookieStore.dropStoredAuthCookies(
+          reason: 'signup_redirect_with_known_auth',
+        ),
+      );
+    }
     if (allowsAuthCookieRemoval) {
       _logoutNavigationAllowed = false;
       _isRecoveringAuthCookies = false;
@@ -756,6 +783,11 @@ class _AppWebViewState extends State<AppWebView>
 
   bool _isLogoutUrl(Uri? uri) {
     return WebViewAuthNavigationGuard.isLogoutUrl(uri);
+  }
+
+  bool _isSignupUrl(Uri? uri) {
+    if (uri == null) return false;
+    return uri.path.replaceAll(RegExp(r'/+$'), '') == '/inscription';
   }
 
   bool _isLoginResolverUrl(Uri uri) {
