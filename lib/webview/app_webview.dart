@@ -577,6 +577,15 @@ class _AppWebViewState extends State<AppWebView>
               setImportant(headerActions, 'gap', '8px');
               setImportant(headerActions, 'column-gap', '8px');
               setImportant(headerActions, 'row-gap', '0');
+              setImportant(headerActions, 'width', 'auto');
+              setImportant(headerActions, 'min-width', '0');
+              setImportant(headerActions, 'max-width', 'max-content');
+              setImportant(headerActions, 'margin-left', 'auto');
+              setImportant(headerActions, '--justify-content', 'flex-end');
+              setImportant(headerActions, '--align-items', 'center');
+              setImportant(headerActions, '--gap', '8px');
+              setImportant(headerActions, '--row-gap', '0');
+              setImportant(headerActions, '--column-gap', '8px');
 
               [subscribeHeader, loginHeader].forEach(function(element) {
                 setImportant(element, 'flex', '0 0 auto');
@@ -638,10 +647,11 @@ class _AppWebViewState extends State<AppWebView>
                 [
                   'html.rsapp,html.rsapp body{touch-action:pan-x pan-y!important;}',
                   'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
-                  'html.rsapp .rsapp-header-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;gap:8px!important;}',
+                  'html.rsapp .rsapp-header-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
+                  'html.rsapp body.logged-in #site-header .rsapp-header-actions,html.rsapp body.logged-in #site-header .elementor-element-d84ae9c{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile,html.rsapp .rsapp-header-actions>#login-header{flex:0 0 auto!important;width:auto!important;max-width:max-content!important;margin:0!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile{order:1!important;}',
-                  'html.rsapp .rsapp-header-actions>#login-header{order:2!important;margin-left:0!important;padding-right:30px!important;}',
+                  'html.rsapp .rsapp-header-actions>#login-header,html.rsapp body.logged-in #site-header #login-header{order:2!important;display:block!important;flex:0 0 auto!important;width:auto!important;max-width:max-content!important;margin:0!important;margin-left:0!important;padding-right:30px!important;}',
                   'html.rsapp #site-header #login-header .pab-mobile-account-toggle,html.rsapp #site-header #login-header .login-toggle{padding-right:30px!important;box-sizing:content-box!important;}',
                   'html.rsapp .rsapp-header-actions>.elementor-widget-foxiz-collapse-toggle{order:3!important;flex:0 0 0!important;width:0!important;min-width:0!important;max-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
