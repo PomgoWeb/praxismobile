@@ -588,6 +588,14 @@ class _AppWebViewState extends State<AppWebView>
               setImportant(subscribeHeader, 'order', '1');
               setImportant(loginHeader, 'order', '2');
               setImportant(loginHeader, 'z-index', '2');
+              setImportant(loginHeader, 'padding-right', '30px');
+
+              loginHeader
+                .querySelectorAll('.pab-mobile-account-toggle, .login-toggle')
+                .forEach(function(element) {
+                  setImportant(element, 'padding-right', '30px');
+                  setImportant(element, 'box-sizing', 'content-box');
+                });
 
               window.requestAnimationFrame(function() {
                 var subscribeRect = subscribeHeader.getBoundingClientRect();
@@ -633,7 +641,8 @@ class _AppWebViewState extends State<AppWebView>
                   'html.rsapp .rsapp-header-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;gap:8px!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile,html.rsapp .rsapp-header-actions>#login-header{flex:0 0 auto!important;width:auto!important;max-width:max-content!important;margin:0!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile{order:1!important;}',
-                  'html.rsapp .rsapp-header-actions>#login-header{order:2!important;margin-left:0!important;}',
+                  'html.rsapp .rsapp-header-actions>#login-header{order:2!important;margin-left:0!important;padding-right:30px!important;}',
+                  'html.rsapp #site-header #login-header .pab-mobile-account-toggle,html.rsapp #site-header #login-header .login-toggle{padding-right:30px!important;box-sizing:content-box!important;}',
                   'html.rsapp .rsapp-header-actions>.elementor-widget-foxiz-collapse-toggle{order:3!important;flex:0 0 0!important;width:0!important;min-width:0!important;max-width:0!important;margin:0!important;padding:0!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-row{display:block!important;overflow:hidden!important;}',
                   'html.rsapp .pab-vx-filters-label:not(.rsapp-hide){display:block!important;margin:0 0 8px!important;}',
