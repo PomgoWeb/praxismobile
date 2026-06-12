@@ -451,6 +451,62 @@ class _AppWebViewState extends State<AppWebView>
               }
             }
 
+            function setImportant(element, property, value) {
+              if (!element || !element.style) return;
+              element.style.setProperty(property, value, 'important');
+            }
+
+            function compactHeaderActions() {
+              var subscribeHeader = document.getElementById('subscribe-header-mobile');
+              var loginHeader = document.getElementById('login-header');
+              var collapsedHeaderToggle = document.querySelector('.elementor-widget-foxiz-collapse-toggle');
+              if (collapsedHeaderToggle) {
+                collapsedHeaderToggle.setAttribute('aria-hidden', 'true');
+                collapsedHeaderToggle.remove();
+              }
+              if (!subscribeHeader || !loginHeader) return;
+
+              var headerActions = subscribeHeader.parentElement;
+              if (!headerActions || !headerActions.contains(loginHeader)) return;
+
+              headerActions.classList.add('rsapp-header-actions');
+              setImportant(headerActions, 'display', 'flex');
+              setImportant(headerActions, 'flex-direction', 'row');
+              setImportant(headerActions, 'flex-wrap', 'nowrap');
+              setImportant(headerActions, 'align-items', 'center');
+              setImportant(headerActions, 'justify-content', 'flex-end');
+              setImportant(headerActions, 'gap', '8px');
+              setImportant(headerActions, 'column-gap', '8px');
+              setImportant(headerActions, 'row-gap', '0');
+
+              [subscribeHeader, loginHeader].forEach(function(element) {
+                setImportant(element, 'flex', '0 0 auto');
+                setImportant(element, 'width', 'auto');
+                setImportant(element, 'min-width', '0');
+                setImportant(element, 'max-width', 'max-content');
+                setImportant(element, 'margin', '0');
+              });
+              setImportant(subscribeHeader, 'order', '1');
+              setImportant(loginHeader, 'order', '2');
+              setImportant(loginHeader, 'z-index', '2');
+
+              window.requestAnimationFrame(function() {
+                var subscribeRect = subscribeHeader.getBoundingClientRect();
+                var loginRect = loginHeader.getBoundingClientRect();
+                var visibleGap = loginRect.left - subscribeRect.right;
+                var targetGap = 8;
+                if (visibleGap > targetGap + 2) {
+                  setImportant(
+                    loginHeader,
+                    'transform',
+                    'translateX(-' + Math.round(visibleGap - targetGap) + 'px)'
+                  );
+                } else {
+                  setImportant(loginHeader, 'transform', 'none');
+                }
+              });
+            }
+
             var subscribeHeader = document.getElementById('subscribe-header-mobile');
             var loginHeader = document.getElementById('login-header');
             var collapsedHeaderToggle = document.querySelector('.elementor-widget-foxiz-collapse-toggle');
@@ -463,6 +519,9 @@ class _AppWebViewState extends State<AppWebView>
             if (collapsedHeaderToggle) {
               collapsedHeaderToggle.setAttribute('aria-hidden', 'true');
             }
+            compactHeaderActions();
+            window.setTimeout(compactHeaderActions, 80);
+            window.setTimeout(compactHeaderActions, 300);
 
             if (!document.getElementById('rsapp-mobile-css')) {
               var style = document.createElement('style');
