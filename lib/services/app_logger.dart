@@ -68,6 +68,34 @@ class AppLogger {
     }
   }
 
+  Future<String> getDiagnosticFilePath(String fileName) async {
+    await _ensureReady();
+    if (_logFile == null) return '';
+    return '${_logFile!.parent.path}${Platform.pathSeparator}$fileName';
+  }
+
+  Future<String> readDiagnosticFile(String fileName) async {
+    final String path = await getDiagnosticFilePath(fileName);
+    if (path.isEmpty) return '';
+
+    try {
+      final File diagnosticFile = File(path);
+      if (!await diagnosticFile.exists()) return '';
+      return await diagnosticFile.readAsString(encoding: utf8);
+    } catch (error, stackTrace) {
+      _debugFallback(
+        _formatLine(
+          'ERROR',
+          'logger.read_diagnostic_file_failed',
+          details: <String, Object?>{'fileName': fileName},
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      return '';
+    }
+  }
+
   Future<String> readContents() async {
     await _ensureReady();
     if (_logFile == null) return '';

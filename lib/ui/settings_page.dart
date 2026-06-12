@@ -6,6 +6,7 @@ import '../config/app_config.dart';
 import '../models/app_state.dart';
 import '../services/app_logger.dart';
 import 'logs_page.dart';
+import 'webview_snapshot_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -64,6 +65,20 @@ class _SettingsPageState extends State<SettingsPage> {
               Navigator.of(
                 context,
               ).push(MaterialPageRoute<void>(builder: (_) => const LogsPage()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.code_rounded),
+            title: const Text('Snapshot HTML WebView'),
+            subtitle: const Text(
+              'Afficher le JSON contenant le HTML de la page et le copier.',
+            ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const WebViewSnapshotPage(),
+                ),
+              );
             },
           ),
           SwitchListTile(
