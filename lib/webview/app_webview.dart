@@ -39,6 +39,7 @@ class _AppWebViewState extends State<AppWebView>
   bool _authCookieRecoveryAttempted = false;
   bool _isRecoveringAuthCookies = false;
   bool _isProtectingAuthNavigation = false;
+  bool _suppressNextCancelledNavigationError = false;
   String? _lastAuthenticatedUrl;
   String? _pendingAppNavigationUrl;
   DateTime? _lastAuthenticatedAt;
@@ -182,6 +183,19 @@ class _AppWebViewState extends State<AppWebView>
                 WebResourceRequest request,
                 WebResourceError error,
               ) {
+                if (_shouldSuppressCancelledNavigationError(error)) {
+                  _suppressNextCancelledNavigationError = false;
+                  context.read<AppLogger>().log(
+                    'webview_cancelled_navigation_error_suppressed',
+                    details: <String, Object?>{
+                      'url': request.url.toString(),
+                      'code': error.type.toString(),
+                      'description': error.description,
+                    },
+                  );
+                  return;
+                }
+                _suppressNextCancelledNavigationError = false;
                 setState(() {
                   _showStartupSplash = false;
                   _isLoading = false;
@@ -268,6 +282,7 @@ class _AppWebViewState extends State<AppWebView>
                       'hasGesture': navigationAction.hasGesture,
                     },
                   );
+                  _suppressNextCancelledNavigationError = true;
                   unawaited(_cookieStore.restore());
                   return NavigationActionPolicy.CANCEL;
                 }
@@ -426,6 +441,15 @@ class _AppWebViewState extends State<AppWebView>
       logoutNavigationAllowed: _logoutNavigationAllowed,
       isUserInitiated: _isUserInitiatedNavigation(navigationAction),
     );
+  }
+
+  bool _shouldSuppressCancelledNavigationError(WebResourceError error) {
+    if (!_suppressNextCancelledNavigationError) return false;
+    final String description = error.description.toLowerCase();
+    return description.contains('webkiterrordomain') &&
+        (description.contains('code=102') ||
+            description.contains('frame load interrupted') ||
+            description.contains('chargement du cadre interrompu'));
   }
 
   bool _shouldProtectAuthNavigation(
