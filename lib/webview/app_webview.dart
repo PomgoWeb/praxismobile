@@ -148,6 +148,7 @@ class _AppWebViewState extends State<AppWebView>
               unawaited(_persistCookiesAfterLoad(controller, uri));
             }
             unawaited(_logCookieState());
+            unawaited(_writeHtmlSnapshot(controller, uri));
             context.read<AppLogger>().log(
               'webview_load_stop',
               details: <String, Object?>{'url': uri?.toString() ?? ''},
@@ -418,6 +419,104 @@ class _AppWebViewState extends State<AppWebView>
     } catch (error, stackTrace) {
       if (!mounted) return;
       logger.logError('webview_cookie_state_error', error, stackTrace);
+    }
+  }
+
+  Future<void> _writeHtmlSnapshot(
+    InAppWebViewController controller,
+    WebUri? uri,
+  ) async {
+    final AppLogger logger = context.read<AppLogger>();
+    try {
+      final Object? result = await controller.evaluateJavascript(
+        source: '''
+          (function() {
+            function outerHtml(selector) {
+              var element = document.querySelector(selector);
+              return element ? element.outerHTML : null;
+            }
+            function rect(selector) {
+              var element = document.querySelector(selector);
+              if (!element) return null;
+              var box = element.getBoundingClientRect();
+              var style = window.getComputedStyle(element);
+              return {
+                left: Math.round(box.left),
+                right: Math.round(box.right),
+                top: Math.round(box.top),
+                width: Math.round(box.width),
+                height: Math.round(box.height),
+                display: style.display,
+                visibility: style.visibility,
+                position: style.position,
+                flex: style.flex,
+                flexBasis: style.flexBasis,
+                marginLeft: style.marginLeft,
+                marginRight: style.marginRight,
+                transform: style.transform
+              };
+            }
+
+            var subscribe = document.getElementById('subscribe-header-mobile');
+            var login = document.getElementById('login-header');
+            var headerActions = subscribe ? subscribe.parentElement : null;
+            var subscribeRect = subscribe ? subscribe.getBoundingClientRect() : null;
+            var loginRect = login ? login.getBoundingClientRect() : null;
+
+            return {
+              url: String(window.location.href || ''),
+              title: String(document.title || ''),
+              html: document.documentElement ? document.documentElement.outerHTML : '',
+              diagnostics: {
+                htmlClasses: document.documentElement ? document.documentElement.className : '',
+                bodyClasses: document.body ? document.body.className : '',
+                headerActionsClasses: headerActions ? headerActions.className : null,
+                visibleGap: subscribeRect && loginRect ? Math.round(loginRect.left - subscribeRect.right) : null,
+                subscribe: rect('#subscribe-header-mobile'),
+                login: rect('#login-header'),
+                toggle: rect('.elementor-widget-foxiz-collapse-toggle'),
+                mobileToggle: rect('.mobile-toggle-wrap'),
+                headerActionsHtml: headerActions ? headerActions.outerHTML : null,
+                subscribeHtml: outerHtml('#subscribe-header-mobile'),
+                loginHtml: outerHtml('#login-header'),
+                toggleHtml: outerHtml('.elementor-widget-foxiz-collapse-toggle'),
+                mobileToggleHtml: outerHtml('.mobile-toggle-wrap')
+              }
+            };
+          })();
+        ''',
+      );
+      if (!mounted || result is! Map) return;
+
+      final String html = result['html']?.toString() ?? '';
+      final Object? diagnostics = result['diagnostics'];
+      final String snapshot = const JsonEncoder.withIndent('  ')
+          .convert(<String, Object?>{
+            'capturedAt': DateTime.now().toIso8601String(),
+            'webviewUrl': result['url']?.toString() ?? uri?.toString() ?? '',
+            'flutterUrl': uri?.toString() ?? '',
+            'title': result['title']?.toString() ?? '',
+            'diagnostics': diagnostics,
+            'html': html,
+          });
+      final String path = await logger.writeDiagnosticFile(
+        'rsapp-webview-snapshot.json',
+        snapshot,
+      );
+
+      logger.log(
+        'webview_html_snapshot_saved',
+        details: <String, Object?>{
+          'url': result['url']?.toString() ?? uri?.toString() ?? '',
+          'path': path,
+          'htmlLength': html.length,
+          'snapshotLength': snapshot.length,
+          'diagnostics': diagnostics,
+        },
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      logger.logError('webview_html_snapshot_error', error, stackTrace);
     }
   }
 

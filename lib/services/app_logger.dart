@@ -38,6 +38,36 @@ class AppLogger {
     return _logFile?.path ?? '';
   }
 
+  Future<String> writeDiagnosticFile(String fileName, String contents) async {
+    await _ensureReady();
+    if (_logFile == null) return '';
+
+    try {
+      final Directory parentDir = _logFile!.parent;
+      final File diagnosticFile = File(
+        '${parentDir.path}${Platform.pathSeparator}$fileName',
+      );
+      await diagnosticFile.writeAsString(
+        contents,
+        mode: FileMode.write,
+        encoding: utf8,
+        flush: true,
+      );
+      return diagnosticFile.path;
+    } catch (error, stackTrace) {
+      _debugFallback(
+        _formatLine(
+          'ERROR',
+          'logger.write_diagnostic_file_failed',
+          details: <String, Object?>{'fileName': fileName},
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      return '';
+    }
+  }
+
   Future<String> readContents() async {
     await _ensureReady();
     if (_logFile == null) return '';
