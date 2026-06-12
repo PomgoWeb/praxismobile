@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -62,28 +63,36 @@ class _AppShellState extends State<AppShell> {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 34,
-        titleSpacing: 8,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Image.asset('assets/icon/app_logo.png', height: 16),
-            const SizedBox(width: 6),
-            const Text(kAppName, style: TextStyle(fontSize: 14, height: 1)),
-          ],
-        ),
-        actions: <Widget>[
-          IconButton(
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_rounded, size: 18),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-            visualDensity: VisualDensity.compact,
-            tooltip: 'Paramètres',
-          ),
-        ],
-      ),
+      appBar: kDebugMode
+          ? AppBar(
+              toolbarHeight: 34,
+              titleSpacing: 8,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Image.asset('assets/icon/app_logo.png', height: 16),
+                  const SizedBox(width: 6),
+                  const Text(
+                    kAppName,
+                    style: TextStyle(fontSize: 14, height: 1),
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                IconButton(
+                  onPressed: _openSettings,
+                  icon: const Icon(Icons.settings_rounded, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Paramètres',
+                ),
+              ],
+            )
+          : null,
       body: Stack(
         children: <Widget>[
           AppWebView(key: _webViewKey),
