@@ -558,6 +558,22 @@ class _AppWebViewState extends State<AppWebView>
               element.style.setProperty(property, value, 'important');
             }
 
+            function forceHide(element) {
+              if (!element) return;
+              element.setAttribute('aria-hidden', 'true');
+              setImportant(element, 'display', 'none');
+            }
+
+            function applyPlatformHides() {
+              document.querySelectorAll('.rsapp-hide').forEach(forceHide);
+              if (html && html.classList.contains('rsapp-ios')) {
+                document.querySelectorAll('.rsapp-ios-hide').forEach(forceHide);
+              }
+              if (html && html.classList.contains('rsapp-iphone')) {
+                document.querySelectorAll('.rsapp-iphone-hide').forEach(forceHide);
+              }
+            }
+
             function compactHeaderActions() {
               var subscribeHeader = document.getElementById('subscribe-header-mobile');
               var loginHeader = document.getElementById('login-header');
@@ -638,9 +654,12 @@ class _AppWebViewState extends State<AppWebView>
             if (collapsedHeaderToggle) {
               collapsedHeaderToggle.setAttribute('aria-hidden', 'true');
             }
+            applyPlatformHides();
             compactHeaderActions();
             window.setTimeout(compactHeaderActions, 80);
             window.setTimeout(compactHeaderActions, 300);
+            window.setTimeout(applyPlatformHides, 80);
+            window.setTimeout(applyPlatformHides, 300);
 
             if (!document.getElementById('rsapp-mobile-css')) {
               var style = document.createElement('style');
@@ -649,7 +668,7 @@ class _AppWebViewState extends State<AppWebView>
               style.appendChild(document.createTextNode(
                 [
                   'html.rsapp,html.rsapp body{touch-action:pan-x pan-y!important;}',
-                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp-ios .rsapp-ios-hide,html.rsapp-iphone .rsapp-iphone-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
+                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp-ios .rsapp-ios-hide,body.rsapp-ios .rsapp-ios-hide,html.rsapp-iphone .rsapp-iphone-hide,body.rsapp-iphone .rsapp-iphone-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
                   'html.rsapp .rsapp-header-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
                   'html.rsapp body.logged-in #site-header .rsapp-header-actions,html.rsapp body.logged-in #site-header .elementor-element-d84ae9c{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile,html.rsapp .rsapp-header-actions>#login-header{flex:0 0 auto!important;width:auto!important;max-width:max-content!important;margin:0!important;}',
@@ -667,6 +686,18 @@ class _AppWebViewState extends State<AppWebView>
                 ].join('')
               ));
               (document.head || html || body).appendChild(style);
+            }
+
+            if (!window.rsappHideObserverReady) {
+              window.rsappHideObserverReady = true;
+              var hideObserver = new MutationObserver(function() {
+                applyPlatformHides();
+              });
+              hideObserver.observe(document.documentElement, {
+                attributes: true,
+                childList: true,
+                subtree: true
+              });
             }
 
             var viewportContent = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
