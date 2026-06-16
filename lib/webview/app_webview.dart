@@ -560,8 +560,12 @@ class _AppWebViewState extends State<AppWebView>
 
             function forceHide(element) {
               if (!element) return;
-              element.setAttribute('aria-hidden', 'true');
-              setImportant(element, 'display', 'none');
+              if (element.getAttribute('aria-hidden') !== 'true') {
+                element.setAttribute('aria-hidden', 'true');
+              }
+              if (element.style.display !== 'none') {
+                setImportant(element, 'display', 'none');
+              }
             }
 
             function applyPlatformHides() {
@@ -686,18 +690,6 @@ class _AppWebViewState extends State<AppWebView>
                 ].join('')
               ));
               (document.head || html || body).appendChild(style);
-            }
-
-            if (!window.rsappHideObserverReady) {
-              window.rsappHideObserverReady = true;
-              var hideObserver = new MutationObserver(function() {
-                applyPlatformHides();
-              });
-              hideObserver.observe(document.documentElement, {
-                attributes: true,
-                childList: true,
-                subtree: true
-              });
             }
 
             var viewportContent = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
