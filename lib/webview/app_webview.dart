@@ -533,7 +533,10 @@ class _AppWebViewState extends State<AppWebView>
             var ua = (navigator.userAgent || '').toLowerCase();
             if (ua.indexOf('android') >= 0) {
               classes.push('rsapp-android');
-            } else if (ua.indexOf('iphone') >= 0 || ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) {
+            } else if (ua.indexOf('iphone') >= 0) {
+              classes.push('rsapp-ios');
+              classes.push('rsapp-iphone');
+            } else if (ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) {
               classes.push('rsapp-ios');
             }
 
@@ -646,7 +649,7 @@ class _AppWebViewState extends State<AppWebView>
               style.appendChild(document.createTextNode(
                 [
                   'html.rsapp,html.rsapp body{touch-action:pan-x pan-y!important;}',
-                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
+                  'html.rsapp .rsapp-hide,html.rsapp .pab-vx-filters-label.rsapp-hide,html.rsapp-ios .rsapp-ios-hide,html.rsapp-iphone .rsapp-iphone-hide,html.rsapp .mobile-toggle-wrap,html.rsapp .elementor-widget-foxiz-collapse-toggle{display:none!important;}',
                   'html.rsapp .rsapp-header-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
                   'html.rsapp body.logged-in #site-header .rsapp-header-actions,html.rsapp body.logged-in #site-header .elementor-element-d84ae9c{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;width:auto!important;min-width:0!important;max-width:max-content!important;margin-left:auto!important;--justify-content:flex-end!important;--align-items:center!important;--gap:8px!important;--row-gap:0!important;--column-gap:8px!important;}',
                   'html.rsapp .rsapp-header-actions>#subscribe-header-mobile,html.rsapp .rsapp-header-actions>#login-header{flex:0 0 auto!important;width:auto!important;max-width:max-content!important;margin:0!important;}',
