@@ -43,6 +43,17 @@ class _AppWebViewState extends State<AppWebView>
     return defaultTargetPlatform == TargetPlatform.iOS;
   }
 
+  String get _appUserAgent {
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS =>
+        'Mozilla/5.0 (iPhone; CPU iPhone OS like Mac OS X) '
+            '$kAppUserAgentTag RSAPP-iOS/1.0',
+      TargetPlatform.android =>
+        'Mozilla/5.0 (Linux; Android) $kAppUserAgentTag RSAPP-Android/1.0',
+      _ => 'Mozilla/5.0 $kAppUserAgentTag',
+    };
+  }
+
   @override
   void initState() {
     super.initState();
@@ -104,7 +115,7 @@ class _AppWebViewState extends State<AppWebView>
             url: WebUri.uri(appState.buildPathUrl(appState.currentPath)),
           ),
           initialSettings: InAppWebViewSettings(
-            userAgent: 'Mozilla/5.0 $kAppUserAgentTag',
+            userAgent: _appUserAgent,
             javaScriptEnabled: true,
             useShouldOverrideUrlLoading: true,
             incognito: false,
